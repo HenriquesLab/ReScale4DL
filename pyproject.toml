@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=42", "wheel>=0.38.4", "cython>=0.29.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+# For an example see REF: https://packaging.python.org/en/latest/specifications/declaring-project-metadata/
+name = "Downsampling"
+version = "0.1.0"
+description = "Contains scripts to be used to pre and post process images for the project"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE.txt" }
+authors = [
+  { name = "Ricardo Henriques", email = "ricardo.jv.henriques@gmail.com" },
+  { name = "Bruno Saraiva", email = "bruno.msaraiva2@gmail.com" },
+  { name = "Estibaliz Gómez-de-Mariscal", email = "egomez@igc.gulbenkian.pt" },
+  { name = "Mariana Ferreira", email = "marianaferreira@igc.gulbenkian.pt" },
+]
+maintainers = [{ name = "Bruno Saraiva", email = "bruno.msaraiva2@gmail.com" },
+  { name = "Estibaliz Gómez-de-Mariscal", email = "egomez@igc.gulbenkian.pt" },
+  { name = "Mariana Ferreira", email = "marianaferreira@igc.gulbenkian.pt" },]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+]
+
+dependencies = []
+
+
+[project.optional-dependencies]
+test = [
+  "pytest >= 7.1",
+  "pytest-cov >= 4.0.0",
+  "pytest-emoji >= 0.2.0",
+  "pytest-icdiff >= 0.6",
+  "pytest-clarity >= 1.0.1",
+  "pytest-timeout >= 2.1.0",
+  "pytest-sugar >= 0.9.6",
+  "pytest-cython >= 0.2.0",
+]
+
+[project.urls]
+#homepage = "https://example.com"
+#documentation = "https://readthedocs.org"
+repository = "https://github.com/HenriquesLab/Downsampling"
+#changelog = "https://github.com/me/spam/blob/master/CHANGELOG.md"
+bug_tracker = "https://github.com/HenriquesLab/Downsampling/issues"
+
+[tool.pytest.ini_options]
+addopts = "--emoji --cov=pyx2pxd --doctest-modules --doctest-cython --ignore=setup.py"
+timeout = 240
+doctest_encoding = "latin1"
