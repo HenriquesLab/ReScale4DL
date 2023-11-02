@@ -25,7 +25,9 @@ classifiers = [
   "Operating System :: OS Independent",
 ]
 
-dependencies = []
+dependencies = [
+  "nanopyx >= 0.2.2",
+]
 
 
 [project.optional-dependencies]
