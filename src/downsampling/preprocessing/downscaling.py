@@ -29,7 +29,7 @@ def binning_blur(img: np.array, downsampling_factor: int, mode: str = "sum"):
         mode = "sum"
 
     if mode == "sum":
-        kernel = np.ones((downsampling_factor, downsampling_factor))
+        kernel = np.ones((downsampling_factor, downsampling_factor), dtype=np.float32)
         return np.asarray(
             conv.run(img.astype(np.float32), kernel),
             dtype=np.float32
@@ -37,9 +37,10 @@ def binning_blur(img: np.array, downsampling_factor: int, mode: str = "sum"):
 
     elif mode == "mean":
         kernel = np.ones((
-            downsampling_factor, downsampling_factor) / (
-            downsampling_factor**2
-            ))
+                downsampling_factor, downsampling_factor),
+                dtype=np.float32) / (
+                downsampling_factor**2
+                )
         return np.asarray(
             conv.run(img.astype(np.float32), kernel),
             dtype=np.float32
