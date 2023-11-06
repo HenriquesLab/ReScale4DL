@@ -3,10 +3,20 @@ from nanopyx.core.transform._le_interpolation_catmull_rom import ShiftAndMagnify
 
 
 def upscale_img(img, magnification):
+    """Upscale an image by the magnification param using Catmull-Rom interpolation.
+    :param img: 3D image array
+    :param magnification: upscaling factor
+    :return: upscaled array
+    """
     cr_upscale = interp_cr()
     return cr_upscale.run(img, 0, 0, magnification, magnification)
 
 
 def upscale_labels(labels, magnification):
+    """Upscale a labels image by the magnification param using Nearest-neighbor interpolation.
+    :param img: 3D image array
+    :param magnification: upscaling factor
+    :return: upscaled array
+    """
     nn_upscale = interp_nn()
     return nn_upscale.run(labels, 0, 0, magnification, magnification)
