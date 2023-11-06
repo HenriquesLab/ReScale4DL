@@ -1,9 +1,12 @@
 import numpy as np
+
+from skimage.transform import rescale
 from nanopyx.core.transform.binning import rebin_2D
 from nanopyx.core._le_convolution import Convolution
 
 
-def binning_downsize(img, downsampling_factor, mode="sum"):
+
+def binning_downsize(img: np.array, downsampling_factor: int, mode: str = "sum"):
     """Bins a 2D array by a given factor. The last two dimensions of the array are binned.
     :param arr: numpy array with any shape as long as last two dimensions are y, x (example: time, channel, z, y, x)
     :param bin_factor: factor used to bin dimensions
@@ -13,7 +16,7 @@ def binning_downsize(img, downsampling_factor, mode="sum"):
     return rebin_2D(img, downsampling_factor, mode=mode)
 
 
-def binning_blur(img, downsampling_factor, mode="sum"):
+def binning_blur(img: np.array, downsampling_factor: int, mode: str = "sum"):
     """Blurs a 2D array by a given factor using binning. The last two dimensions of the array are binned.
     :param arr: numpy array with any shape as long as last two dimensions are y, x (example: time, channel, z, y, x)
     :param bin_factor: factor used to bin dimensions
@@ -42,7 +45,8 @@ def binning_blur(img, downsampling_factor, mode="sum"):
             dtype=np.float32
             )
 
-def binning_img(img, downsampling_factor, keep_dims=False, mode="sum"):
+
+def binning_img(img: np.array, downsampling_factor: int, keep_dims: bool = False, mode: str = "sum"):
     """Bins a 2D array by a given factor. The last two dimensions of the array are binned.
     :param arr: numpy array with any shape as long as last two dimensions are y, x (example: time, channel, z, y, x)
     :param bin_factor: factor used to bin dimensions
@@ -54,3 +58,9 @@ def binning_img(img, downsampling_factor, keep_dims=False, mode="sum"):
         return binning_blur(img, downsampling_factor, mode=mode)
     else:
         return binning_downsize(img, downsampling_factor, mode=mode)
+
+def binning_label(img: np.array, downsampling_factor: int):
+    """Bins a 2D array by a given factor using Nearest-neighbor.
+    :params img: Input image, should be a 2-d np array.
+    :params downsampling_factor: factor used to bin dimensions"""
+        return rescale(img, downsampling_factor, anti_aliasing=False, order=0)
