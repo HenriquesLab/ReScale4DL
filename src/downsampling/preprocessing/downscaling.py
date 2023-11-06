@@ -1,7 +1,7 @@
 import numpy as np
 
 from skimage.transform import rescale
-from nanopyx.core.transform.binning import rebin_2D
+from nanopyx.core.transform.binning import rebin_2d
 from nanopyx.core._le_convolution import Convolution
 
 
@@ -13,7 +13,7 @@ def binning_downsize(img: np.array, downsampling_factor: int, mode: str = "sum")
     :param mode: can be either sum or mean, defaults to sum if not specified or not valid mode
     :return: binned array
     """
-    return rebin_2D(img, downsampling_factor, mode=mode)
+    return rebin_2d(img, downsampling_factor, mode=mode)
 
 
 def binning_blur(img: np.array, downsampling_factor: int, mode: str = "sum"):
@@ -63,4 +63,4 @@ def binning_label(img: np.array, downsampling_factor: int):
     """Bins a 2D array by a given factor using Nearest-neighbor.
     :params img: Input image, should be a 2-d np array.
     :params downsampling_factor: factor used to bin dimensions"""
-        return rescale(img, downsampling_factor, anti_aliasing=False, order=0)
+    return rescale(img, downsampling_factor, anti_aliasing=False, order=0)
