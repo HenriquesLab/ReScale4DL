@@ -4,6 +4,8 @@ from typing import List
 from tkinter import filedialog as fd
 from tifffile import imread, imwrite
 
+from .preprocessing.downscaling import binning_img, binning_label
+from .postprocessing.upscaling import upsample_img, upsample_labels
 
 def downsample_batch(input_folder_path: str, downsampling_factor: int, keep_dims: bool = False, mode: str = "sum"):
     """Downsamples a batch of images by a given factor. The last two dimensions of the array are binned.
@@ -31,7 +33,10 @@ def downsample_batch(input_folder_path: str, downsampling_factor: int, keep_dims
         img = imread(os.path.join(input_folder_path, "Images", img_name))
         lbl = imread(os.path.join(input_folder_path, "Labels", img_name))
         imwrite(os.path.join(new_images_path, img_name), binning_img(img, downsampling_factor, keep_dims=keep_dims, mode=mode))
-        imwrite(os.path.join(new_labels_path, img_name), binning_lbl(lbl, downsampling_factor, keep_dims=keep_dims, mode=mode))
+        if keep_dims:
+            imwrite(os.path.join(new_labels_path, img_name), lbl)
+        else:
+            imwrite(os.path.join(new_labels_path, img_name), binning_label(lbl, downsampling_factor, keep_dims=keep_dims, mode=mode))
 
 
 def upsample_batch(input_folder_path: str, magnification: int, keep_dims: bool = False):
