@@ -2,7 +2,7 @@ import numpy as np
 
 from skimage.transform import rescale
 from nanopyx.core.transform.binning import rebin_2d
-from nanopyx.core._le_convolution import Convolution
+from nanopyx.core.transform._le_convolution import Convolution
 
 
 
