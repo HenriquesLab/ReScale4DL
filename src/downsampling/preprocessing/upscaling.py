@@ -1,8 +1,9 @@
 import numpy as np
-from nanopyx.core.transform._le_interpolation_nearest_neighbor import ShiftAndMagnify as interp_nn
-from nanopyx.core.transform._le_interpolation_nearest_neighbor import ShiftScaleRotate as magnify_nn
+
 from nanopyx.core.transform._le_interpolation_catmull_rom import ShiftAndMagnify as interp_cr
 from nanopyx.core.transform._le_interpolation_catmull_rom import ShiftScaleRotate as magnify_cr
+from nanopyx.core.transform._le_interpolation_nearest_neighbor import ShiftAndMagnify as interp_nn
+from nanopyx.core.transform._le_interpolation_nearest_neighbor import ShiftScaleRotate as magnify_nn
 
 
 def upsample_img(img: np.array, magnification: int, keep_dims: bool = False):
