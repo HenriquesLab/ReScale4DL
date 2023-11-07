@@ -27,6 +27,8 @@ classifiers = [
 
 dependencies = [
   "nanopyx >= 0.2.2",
+  "skimage",
+  "numpy",
 ]
 
 
