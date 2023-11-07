@@ -5,9 +5,9 @@ from typing import List
 from tkinter import filedialog as fd
 from tifffile import imread, imwrite
 
+from .utils import check_crop_img
 from .preprocessing.downscaling import binning_img, binning_label
 from .preprocessing.upscaling import upsample_img, upsample_labels
-from .utils import check_crop_img
 
 
 def downsample_batch(input_folder_path: str, input_folder_name: str, downsampling_factor: int, keep_dims: bool = False, mode: str = "sum"):
@@ -72,7 +72,30 @@ def upsample_batch(input_folder_path: str, input_folder_name: str, magnification
         imwrite(os.path.join(new_labels_path, img_name), upsample_labels(lbl, magnification, keep_dims=keep_dims))
 
 
-def process_batch(input_folder_path: str, input_folder_name: str, magnifications: List[int], downsampling_factors: List[int], modes: List[str] = ["sum", "mean"]):
+def blur_batch(input_folder_path: str, input_folder_name: str, gaussian_sigma: float):
+    """Applies Gaussian blur to a batch of images.
+    Creates new folders outside input_folder to store the results.
+    :param input_folder_path: path to folder containing an "images" folder and a "labels" folder. Images inside both folders should have the same name.
+    :param gaussians: list of standard deviations
+    """
+
+    new_dataset_path = os.path.join(os.path.dirname(os.path.dirname(input_folder_path)), "Processed", f"{input_folder_name}_blurred_{gaussians}")
+    new_images_path = os.path.join(new_dataset_path, "Images")
+    new_labels_path = os.path.join(new_dataset_path, "Labels")
+
+    if not os.path.exists(new_dataset_path):
+        os.mkdir(new_dataset_path)
+        os.mkdir(new_images_path)
+        os.mkdir(new_labels_path)
+
+    for img_name in os.listdir(os.path.join(input_folder_path, "Images")):
+        img = imread(os.path.join(input_folder_path, "Images", img_name)).astype(np.float32)
+        lbl = imread(os.path.join(input_folder_path, "Labels", img_name)).astype(np.float32)
+        imwrite(os.path.join(new_images_path, img_name), gaussian_blur(img, gaussian_sigma))
+        imwrite(os.path.join(new_labels_path, img_name), lbl)
+
+
+def process_batch(input_folder_path: str, input_folder_name: str, magnifications: List[int], downsampling_factors: List[int], gaussians: List[float], modes: List[str] = ["sum", "mean"]):
     """Performs all downstream preprocessing on a single dataset"""
 
     for mag in magnifications:
@@ -105,8 +128,15 @@ def process_batch(input_folder_path: str, input_folder_name: str, magnifications
                 mode=mode
                 )
 
+    for gau in gaussians:
+        blur_batch(
+            input_folder_path,
+            input_folder_name,
+            gau
+        )
 
-def process_all_datasets(datasets_path: str, downsampling_factor: List[int], magnification: List[int], modes: List[str] = ["sum", "mean"]):
+
+def process_all_datasets(datasets_path: str, downsampling_factor: List[int], magnification: List[int], gaussians: List[float], modes: List[str] = ["sum", "mean"]):
     """Performs all downstream preprocessing on all datasets in a folder"""
 
     if datasets_path is None:
@@ -123,5 +153,6 @@ def process_all_datasets(datasets_path: str, downsampling_factor: List[int], mag
                 fld,
                 downsampling_factor,
                 magnification,
+                gaussians,
                 modes
                 )
