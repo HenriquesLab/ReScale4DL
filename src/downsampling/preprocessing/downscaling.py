@@ -64,4 +64,4 @@ def binning_label(img: np.array, downsampling_factor: int):
     """Bins a 2D array by a given factor using Nearest-neighbor.
     :params img: Input image, should be a 2-d np array.
     :params downsampling_factor: factor used to bin dimensions"""
-    return rescale(img, downsampling_factor, anti_aliasing=False, order=0)
+    return rescale(img, 1/downsampling_factor, anti_aliasing=False, order=0)
