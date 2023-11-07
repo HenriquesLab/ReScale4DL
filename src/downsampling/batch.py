@@ -6,7 +6,7 @@ from tkinter import filedialog as fd
 from tifffile import imread, imwrite
 
 from .utils import check_crop_img
-from .blurring import gaussian_blur
+from .preprocessing.blurring import gaussian_blur
 from .preprocessing.downscaling import binning_img, binning_label
 from .preprocessing.upscaling import upsample_img, upsample_labels
 
