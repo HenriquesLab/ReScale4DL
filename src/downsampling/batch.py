@@ -6,6 +6,7 @@ from tkinter import filedialog as fd
 from tifffile import imread, imwrite
 
 from .utils import check_crop_img
+from .blurring import gaussian_blur
 from .preprocessing.downscaling import binning_img, binning_label
 from .preprocessing.upscaling import upsample_img, upsample_labels
 
@@ -79,7 +80,7 @@ def blur_batch(input_folder_path: str, input_folder_name: str, gaussian_sigma: f
     :param gaussians: list of standard deviations
     """
 
-    new_dataset_path = os.path.join(os.path.dirname(os.path.dirname(input_folder_path)), "Processed", f"{input_folder_name}_blurred_{gaussians}")
+    new_dataset_path = os.path.join(os.path.dirname(os.path.dirname(input_folder_path)), "Processed", f"{input_folder_name}_blurred_{gaussian_sigma}")
     new_images_path = os.path.join(new_dataset_path, "Images")
     new_labels_path = os.path.join(new_dataset_path, "Labels")
 
