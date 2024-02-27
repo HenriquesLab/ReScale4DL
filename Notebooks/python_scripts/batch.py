@@ -6,9 +6,9 @@ from tkinter import filedialog as fd
 from tifffile import imread, imwrite
 
 from .utils import check_crop_img
-from .preprocessing.blurring import gaussian_blur
-from .preprocessing.downscaling import binning_img, binning_label
-from .preprocessing.upscaling import upsample_img, upsample_labels
+from blurring import gaussian_blur
+from downscaling import binning_img, binning_label
+from upscaling import upsample_img, upsample_labels
 
 
 def downsample_batch(input_folder_path: str, input_folder_name: str, downsampling_factor: int, keep_dims: bool = False, mode: str = "sum"):
