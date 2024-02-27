@@ -161,5 +161,4 @@ cython_debug/
 
 Data/Staph
 .DS_Store
-*.tif
 .gitignore
