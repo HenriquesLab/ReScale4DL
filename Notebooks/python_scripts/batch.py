@@ -6,9 +6,9 @@ from tkinter import filedialog as fd
 from tifffile import imread, imwrite
 
 from .utils import check_crop_img
-from blurring import gaussian_blur
-from downscaling import binning_img, binning_label
-from upscaling import upsample_img, upsample_labels
+from .blurring import gaussian_blur
+from .downscaling import binning_img, binning_label
+from .upscaling import upsample_img, upsample_labels
 
 
 def downsample_batch(input_folder_path: str, input_folder_name: str, downsampling_factor: int, keep_dims: bool = False, mode: str = "sum"):
@@ -40,9 +40,9 @@ def downsample_batch(input_folder_path: str, input_folder_name: str, downsamplin
         lbl = check_crop_img(lbl, downsampling_factor)
         imwrite(os.path.join(new_images_path, img_name), binning_img(img, downsampling_factor, keep_dims=keep_dims, mode=mode))
         if keep_dims:
-            imwrite(os.path.join(new_labels_path, img_name), lbl)
+            imwrite(os.path.join(new_labels_path, img_name), lbl.astype(np.float16))
         else:
-            imwrite(os.path.join(new_labels_path, img_name), binning_label(lbl, downsampling_factor))
+            imwrite(os.path.join(new_labels_path, img_name), binning_label(lbl, downsampling_factor).astype(np.float16))
 
 
 def upsample_batch(input_folder_path: str, input_folder_name: str, magnification: int, keep_dims: bool = False):
@@ -70,7 +70,7 @@ def upsample_batch(input_folder_path: str, input_folder_name: str, magnification
         img = imread(os.path.join(input_folder_path, "Images", img_name)).astype(np.float32)
         lbl = imread(os.path.join(input_folder_path, "Labels", img_name)).astype(np.float32)
         imwrite(os.path.join(new_images_path, img_name), upsample_img(img, magnification, keep_dims=keep_dims))
-        imwrite(os.path.join(new_labels_path, img_name), upsample_labels(lbl, magnification, keep_dims=keep_dims))
+        imwrite(os.path.join(new_labels_path, img_name), upsample_labels(lbl, magnification, keep_dims=keep_dims).astype(np.float16))
 
 
 def blur_batch(input_folder_path: str, input_folder_name: str, gaussian_sigma: float):
@@ -93,10 +93,10 @@ def blur_batch(input_folder_path: str, input_folder_name: str, gaussian_sigma: f
         img = imread(os.path.join(input_folder_path, "Images", img_name)).astype(np.float32)
         lbl = imread(os.path.join(input_folder_path, "Labels", img_name)).astype(np.float32)
         imwrite(os.path.join(new_images_path, img_name), gaussian_blur(img, gaussian_sigma))
-        imwrite(os.path.join(new_labels_path, img_name), lbl)
+        imwrite(os.path.join(new_labels_path, img_name), lbl.astype(np.float16))
 
 
-def process_batch(input_folder_path: str, input_folder_name: str, magnifications: List[int], downsampling_factors: List[int], gaussians: List[float], modes: List[str] = ["sum", "mean"]):
+def process_batch(input_folder_path: str, input_folder_name: str, downsampling_factors: List[int], magnifications: List[int], gaussians: List[float], modes: List[str] = ["sum", "mean"]):
     """Performs all downstream preprocessing on a single dataset"""
 
     for mag in magnifications:
