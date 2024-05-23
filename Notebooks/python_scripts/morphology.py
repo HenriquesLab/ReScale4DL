@@ -9,6 +9,7 @@ import seaborn as sns
 import skimage as ski
 from sklearn import metrics as skl
 
+## Region properties functions start
 def region_properties(label_image: np.ndarray, properties, spacing=None):
     """
     Calculate properties of regions in the input file and return the results.
@@ -131,26 +132,27 @@ def object_props(directory, properties, spacing, folder_sampling_dict):
 
     # Loop through all files in all subdirectories
     for root, dirs, files in os.walk(directory):
+        if 'Results' not in root:
 
-        # Loop through all files and add region properties/prediction statistics to a dataframe
-        for file in files:
-            if file.endswith(".tif"):
-                # Open image file
-                img_file = ski.io.imread(os.path.join(root, file))
+            # Loop through all files and add region properties/prediction statistics to a dataframe
+            for file in files:
+                if file.endswith(".tif"):
+                    # Open image file
+                    img_file = ski.io.imread(os.path.join(root, file))
 
-                # Calculate region properties
-                props = region_properties(img_file, properties = properties, spacing = spacing)
-                extra_properties(props)
-                add_file_name_to_dataframe(os.path.join(root, file), props)
-                add_parent_folder(props, given_dir = directory, root = root, folder_sampling_dict = folder_sampling_dict)
-                normalize_to_sampling(props, properties)  
+                    # Calculate region properties
+                    props = region_properties(img_file, properties = properties, spacing = spacing)
+                    extra_properties(props)
+                    add_file_name_to_dataframe(os.path.join(root, file), props)
+                    add_parent_folder(props, given_dir = directory, root = root, folder_sampling_dict = folder_sampling_dict)
+                    normalize_to_sampling(props, properties)  
 
-                # Add region properties to dataframe
-                obj_props_df = pd.concat([obj_props_df, pd.DataFrame(props)], ignore_index=True)
+                    # Add region properties to dataframe
+                    obj_props_df = pd.concat([obj_props_df, pd.DataFrame(props)], ignore_index=True)
 
     return obj_props_df
 
-## Morphology functions end
+
 
 ##Prediction statistics functions start
 
@@ -214,14 +216,143 @@ def prediction_statistics(parent_folder_dict, directory):
 
                 # Add the results to the dataframe
 
-                pred_stats_df = pd.concat([pred_stats_df, pd.DataFrame([{'Grand_Parent_Folder': GP_folder, 'File': file, 'IoU': IoU, 'f1_score': f1_score}])], ignore_index=True)
+                pred_stats_df = pd.concat([pred_stats_df, pd.DataFrame([{'Grand_Parent_Folder': GP_folder, 'File_name': file, 'IoU': IoU, 'f1_score': f1_score}])], ignore_index=True)
 
             else:
                 print(f'Error: {file} has different shape in GT and Prediction folders.')
 
     return pred_stats_df
-        
-## Prediction statistics functions end
+
+def per_object_statistics(directory, res_dir, obj_props_df):
+    """
+    Calculate the IoU for each object in the image.
+    
+    Args:
+        parent_folder_dict: A dictionary of parent folders and grand parent folders.
+        obj_props_df: A dataframe containing the properties of the objects in the image.
+    """
+
+    # Create a dictionary of parent folders and grand parent folders
+    parent_folder_dict_1 = parent_folder_dict(obj_props_df)
+
+    if len(parent_folder_dict_1.keys()) > 2:
+        return print("Error: More than two parent folders found.")
+    
+    # Create dataframes to store the results
+    IoU_per_obj_df = pd.DataFrame([])
+    summary_df = pd.DataFrame([])
+
+    GP_dict = parent_folder_dict_1.popitem()
+    #GP_dict = ['downsampling_16']
+
+    for GP_folder in sorted(GP_dict[1]):
+            # Create the path variable to the GT and Prediction folders
+            GT_path = os.path.join(directory, GP_folder, 'GT')
+            pred_path = os.path.join(directory, GP_folder, 'Prediction')
+
+            #Create results sub-folder if it doesn't exist
+            res_pred_dir = os.path.join(res_dir, GP_folder)
+            if not os.path.exists(res_pred_dir):
+                os.mkdir(res_pred_dir)
+
+            # Get the list of GT and Prediction .tif files
+            GT_file_list = [file for file in os.listdir(GT_path) if file.endswith('.tif')]
+            pred_file_list = [file for file in os.listdir(pred_path) if file.endswith('.tif')]
+
+            # Get the list of the paired files (both GT and Prediction .tif files)
+            paired_files = list(set(GT_file_list) & set(pred_file_list))
+
+            # Loop through the paired files
+            for file in paired_files:
+                GT_img = ski.io.imread(os.path.join(GT_path, file))
+                pred_img = ski.io.imread(os.path.join(pred_path, file))
+
+                # Check if the shape of the GT and Prediction images are the same
+                if GT_img.shape == pred_img.shape:
+                    # Calculate the number of objects in each image and remap the labels
+                    GT_remap, GT_count = ski.measure.label(GT_img, background=0, return_num=True)
+                    pred_remap, pred_count = ski.measure.label(pred_img, background=0, return_num=True)
+
+                    # Initialize the true positives, false positives, and false negatives arrays
+                    true_positives = np.zeros_like(GT_img)
+                    false_positives = np.zeros_like(GT_img)
+                    false_negatives = np.zeros_like(GT_img)
+
+                    #print(f'{file} from {GP_folder} has {GT_count} objects in GT and {pred_count} objects in Prediction')
+
+                    # Loop through all objects in GT and Prediction
+                    #For each object in GT
+                    for obj in range(1, GT_count+1):
+                        #Copy the remaped GT image and remap the current object in GT to 1 and make all others 0
+                        GT_obj = GT_remap.copy()
+                        GT_obj[GT_obj != obj] = 0
+                        GT_obj[GT_obj == obj] = 1
+
+                        # Compare the current object in GT to all objects in Prediction
+                        for p_obj in range(1, pred_count+1):
+                            #Only if the object still exists in the remaped Prediction image
+                            if p_obj in pred_remap:
+                                #Copy the remaped Prediciton image and remap the current object in pred to 1 and make all others 0
+                                pred_obj = pred_remap.copy()
+                                pred_obj[pred_obj != p_obj] = 0
+                                pred_obj[pred_obj == p_obj] = 1
+
+                                #Calculate the IoU for the current objects
+                                iou_score= skl.jaccard_score(GT_obj, pred_obj, average='micro')
+                                
+                                #If the IoU is greater than 0.5 it is considered as true positive
+                                if iou_score > 0.5:
+                                    f1_score = skl.f1_score(GT_obj, pred_obj, average='micro')
+
+                                    #Calculate pixel coverage percentage for GT and Prediction Labels
+                                    GT_pixel_coverage = pixel_coverage_percent(GT_obj)
+                                    pred_pixel_coverage = pixel_coverage_percent(pred_obj)
+
+                                    #Add object to the true positives array and remove object from the remaped Prediction image
+                                    true_positives[GT_remap == obj] = obj
+                                    pred_remap[pred_remap == p_obj] = 0
+
+                                    #Add object properties to the per object dataframe
+                                    IoU_per_obj_df = pd.concat([IoU_per_obj_df, pd.DataFrame([{'Grand_Parent_Folder': GP_folder, 'File_name': file,'GT_Label': obj, 'Prediction_Label': p_obj, 'GT_Pixel_Coverage_Percent': GT_pixel_coverage, 'Prediction_Pixel_Coverage_Percent': pred_pixel_coverage, 'IoU': iou_score, 'f1_score': f1_score}])], ignore_index=True) 
+
+                                    #Once a true positive is found, break out of the loop
+                                    break
+
+                                if p_obj == pred_count:
+                                    GT_pixel_coverage =pixel_coverage_percent(GT_obj)
+                                    
+                                    false_negatives[GT_remap == obj] = obj
+
+                                    IoU_per_obj_df = pd.concat([IoU_per_obj_df, pd.DataFrame([{'Grand_Parent_Folder': GP_folder, 'File_name': file,'GT_Label': obj, 'Prediction_Label': None, 'GT_Pixel_Coverage_Percent': GT_pixel_coverage, 'Prediction_Pixel_Coverage_Percent': 0, 'IoU': 0, 'f1_score': 0}])], ignore_index=True)
+
+                    #Store false positives in the array image
+                    false_positives[pred_remap != 0] = pred_remap[pred_remap != 0]
+
+                    #Save the images
+                    ski.io.imsave(os.path.join(res_pred_dir, file.split('.')[0] + '_true_positives.tif'), true_positives, check_contrast=False)
+                    ski.io.imsave(os.path.join(res_pred_dir, file.split('.')[0] + '_false_negatives.tif'), false_negatives, check_contrast=False)
+                    ski.io.imsave(os.path.join(res_pred_dir, file.split('.')[0] + '_false_positives.tif'), false_positives, check_contrast=False)
+
+                    #Get summary statistics
+                    true_positives, true_positives_count = ski.measure.label(true_positives, background=0, return_num=True)
+                    false_negatives, false_negatives_count = ski.measure.label(false_negatives, background=0, return_num=True)
+                    false_positives, false_positives_count = ski.measure.label(false_positives, background=0, return_num=True)
+
+                    filtered_df = IoU_per_obj_df[(IoU_per_obj_df['File_name'] == file) & (IoU_per_obj_df['Grand_Parent_Folder'] == GP_folder)]
+                    mean_iou = filtered_df['IoU'].mean()
+                    mean_f1 = filtered_df['f1_score'].mean()
+                    
+                    #Add summary statistics to the summary dataframe
+                    summary_df = pd.concat([summary_df, pd.DataFrame([{'Grand_Parent_Folder': GP_folder, 'File_name': file, 'GT_count': GT_count, 'pred_count': pred_count, 'true_positives_count': true_positives_count, 'false_negatives_count': false_negatives_count, 'false_positives_count': false_positives_count, 'Mean_IoU': mean_iou , 'Mean_f1_score': mean_f1}])], ignore_index=True)
+
+                    #break
+
+                else:
+                    print(f'Error: {file} has different shape in GT and Prediction folders.')
+            #break
+
+    return summary_df, IoU_per_obj_df
+
 
 ## Plotting functions start
 
@@ -309,3 +440,22 @@ def generate_basic_plot(res_dir: str, dataframe: pd.DataFrame, folder_sampling_d
 
     else:
         return plot
+    
+
+## Miscellaneous functions start
+
+def pixel_coverage_percent(img_array: np.array):    
+    """
+    Calculate the pixel coverage percentage of the input image array.
+    
+    Args:
+        image_array: A numpy/dataframe image array.
+        
+    Returns:
+        pixel_coverage_percent: The percentage of the object that each pixel covers.
+
+    """
+    obj_area = np.sum(img_array)
+    pixel_coverage = 1 / obj_area * 100
+
+    return pixel_coverage
