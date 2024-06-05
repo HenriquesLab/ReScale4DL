@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import skimage as ski
 from sklearn import metrics as skl
+from time import perf_counter, strftime, gmtime
+from scipy import ndimage
 
 ## Region properties functions start
 def region_properties(label_image: np.ndarray, properties, spacing=None):
@@ -241,9 +243,10 @@ def per_object_statistics(directory, res_dir, obj_props_df):
     # Create dataframes to store the results
     IoU_per_obj_df = pd.DataFrame([])
     summary_df = pd.DataFrame([])
+    start_time = None
 
     GP_dict = parent_folder_dict_1.popitem()
-    #GP_dict = ['downsampling_16']
+    #GP_dict = [[''],['downsampling_16']]
 
     for GP_folder in sorted(GP_dict[1]):
             # Create the path variable to the GT and Prediction folders
@@ -273,57 +276,150 @@ def per_object_statistics(directory, res_dir, obj_props_df):
                     GT_remap, GT_count = ski.measure.label(GT_img, background=0, return_num=True)
                     pred_remap, pred_count = ski.measure.label(pred_img, background=0, return_num=True)
 
+                    # If any of the label images are empty (only background), skip the file and move on to the next one
+                    ##if pred_count == 0 or GT_count == 0:
+                        ##print(f'{file} from {GP_folder} has {GT_count} objects in GT and {pred_count} objects in Prediction. Skipping...')
+                        #continue
+
+                    # Get Bounding Boxes coords for each GT object
+                    bbox_list = pd.DataFrame(ski.measure.regionprops_table(GT_remap, properties=['label', 'bbox'], spacing=(1,1)))
+                    #bbox_list.to_csv(os.path.join(res_pred_dir, file[:-4]+'_BBox.csv'))
+
                     # Initialize the true positives, false positives, and false negatives arrays
                     true_positives = np.zeros_like(GT_img)
                     false_positives = np.zeros_like(GT_img)
                     false_negatives = np.zeros_like(GT_img)
 
-                    #print(f'{file} from {GP_folder} has {GT_count} objects in GT and {pred_count} objects in Prediction')
+                    # Lists to store information about each object, reset at the start of each image
+                    GP_folder_list = []
+                    file_name_list = []
+                    GT_label_list = []
+                    pred_label_list = []
+                    GT_px_cov_list = []
+                    pred_px_cov_list = []
+                    IoU_list = []
+                    f1_score_list = []
+
+                    GT_min_width = []
+                    GT_max_width = []
+                    GT_mean_width = []
+                    GT_median_width = []
+
+                    pred_min_width = []
+                    pred_max_width = []
+                    pred_mean_width = []
+                    pred_median_width = []
+
+                    # Reset temp dataframe
+                    temp_df = pd.DataFrame([])
+
+                    if start_time is not None:
+                        print(f'Elapsed time: {strftime("%H:%M:%S", gmtime(perf_counter() - start_time))}')
+                    print(f'{file} from {GP_folder} has {GT_count} objects in GT and {pred_count} objects in Prediction')
+                    start_time = perf_counter()
 
                     # Loop through all objects in GT and Prediction
                     #For each object in GT
                     for obj in range(1, GT_count+1):
+                        # Get the bounding box for the current object
+                        bbox_index = bbox_list.loc[bbox_list['label'] == obj].index[0]
+                        bbox = bbox_list.loc[bbox_index, ['bbox-0', 'bbox-1', 'bbox-2', 'bbox-3']]
+
+                        # Get the coordinates of the bounding box    
+                        x1, x2, y1, y2 = bbox_points_for_crop(bbox, bbox['bbox-2'].max(), bbox['bbox-3'].max())
+
                         #Copy the remaped GT image and remap the current object in GT to 1 and make all others 0
-                        GT_obj = GT_remap.copy()
-                        GT_obj[GT_obj != obj] = 0
-                        GT_obj[GT_obj == obj] = 1
+                        GT_obj = GT_remap[x1:x2, y1:y2] #GT_obj = GT_obj == obj #GT_obj = GT_obj[x1:x2+10, y1-10:y2+10]
+                        GT_obj = GT_obj == obj
+
+                        #Calculate the pixel coverage and object width values
+                        GT_pixel_coverage = pixel_coverage_percent(GT_obj)
+                        gt_min_w, gt_max_w, gt_mean_w, gt_median_w = object_width(GT_obj)
+
+                        #Add object information to lists
+                        GP_folder_list.append(GP_folder)
+                        file_name_list.append(file)
+                        GT_label_list.append(obj)
+                        GT_px_cov_list.append(GT_pixel_coverage)
+                        GT_min_width.append(gt_min_w)
+                        GT_max_width.append(gt_max_w)
+                        GT_mean_width.append(gt_mean_w)
+                        GT_median_width.append(gt_median_w)
+
+                        if pred_count == 0:
+                            pred_label_list.append(0)
+                            pred_px_cov_list.append(0)
+                            IoU_list.append(0)
+                            f1_score_list.append(0)
+
+                            pred_min_width.append(0)
+                            pred_max_width.append(0)
+                            pred_mean_width.append(0)
+                            pred_median_width.append(0)
+
+                            continue
 
                         # Compare the current object in GT to all objects in Prediction
                         for p_obj in range(1, pred_count+1):
                             #Only if the object still exists in the remaped Prediction image
                             if p_obj in pred_remap:
                                 #Copy the remaped Prediciton image and remap the current object in pred to 1 and make all others 0
-                                pred_obj = pred_remap.copy()
-                                pred_obj[pred_obj != p_obj] = 0
-                                pred_obj[pred_obj == p_obj] = 1
+                                pred_obj = pred_remap[x1:x2, y1:y2]
+                                pred_obj = pred_obj == p_obj
 
-                                #Calculate the IoU for the current objects
-                                iou_score= skl.jaccard_score(GT_obj, pred_obj, average='micro')
-                                
-                                #If the IoU is greater than 0.5 it is considered as true positive
-                                if iou_score > 0.5:
-                                    f1_score = skl.f1_score(GT_obj, pred_obj, average='micro')
-
-                                    #Calculate pixel coverage percentage for GT and Prediction Labels
-                                    GT_pixel_coverage = pixel_coverage_percent(GT_obj)
-                                    pred_pixel_coverage = pixel_coverage_percent(pred_obj)
-
-                                    #Add object to the true positives array and remove object from the remaped Prediction image
-                                    true_positives[GT_remap == obj] = obj
-                                    pred_remap[pred_remap == p_obj] = 0
-
-                                    #Add object properties to the per object dataframe
-                                    IoU_per_obj_df = pd.concat([IoU_per_obj_df, pd.DataFrame([{'Grand_Parent_Folder': GP_folder, 'File_name': file,'GT_Label': obj, 'Prediction_Label': p_obj, 'GT_Pixel_Coverage_Percent': GT_pixel_coverage, 'Prediction_Pixel_Coverage_Percent': pred_pixel_coverage, 'IoU': iou_score, 'f1_score': f1_score}])], ignore_index=True) 
-
-                                    #Once a true positive is found, break out of the loop
-                                    break
-
-                                if p_obj == pred_count:
-                                    GT_pixel_coverage =pixel_coverage_percent(GT_obj)
+                                if pred_obj.sum() != 0:
+                                    #Calculate the IoU for the current objects
+                                    #iou_score= skl.jaccard_score(GT_obj, pred_obj, average='micro')
+                                    intersection = np.logical_and(GT_obj, pred_obj)
+                                    union = np.logical_or(GT_obj, pred_obj)
+                                    iou_score =  np.sum(intersection) / np.sum(union)
                                     
-                                    false_negatives[GT_remap == obj] = obj
+                                    #If the IoU is greater than 0.5 it is considered as true positive
+                                    if iou_score > 0.5:
+                                        f1_score = skl.f1_score(GT_obj, pred_obj, average='micro')
 
-                                    IoU_per_obj_df = pd.concat([IoU_per_obj_df, pd.DataFrame([{'Grand_Parent_Folder': GP_folder, 'File_name': file,'GT_Label': obj, 'Prediction_Label': None, 'GT_Pixel_Coverage_Percent': GT_pixel_coverage, 'Prediction_Pixel_Coverage_Percent': 0, 'IoU': 0, 'f1_score': 0}])], ignore_index=True)
+                                        #Calculate pixel coverage percentage for Prediction Label
+                                        pred_pixel_coverage = pixel_coverage_percent(pred_obj)
+                                        pred_min_w, pred_max_w, pred_mean_w, pred_median_w = object_width(pred_obj)
+
+                                        #Add object to the true positives array and remove object from the remaped Prediction image
+                                        true_positives[pred_remap == p_obj] = obj
+                                        pred_remap[pred_remap == p_obj] = 0
+
+                                        #Add object information to lists
+                                        pred_label_list.append(p_obj)
+                                        pred_px_cov_list.append(pred_pixel_coverage)
+                                        IoU_list.append(iou_score)
+                                        f1_score_list.append(f1_score)
+                                        pred_min_width.append(pred_min_w)
+                                        pred_max_width.append(pred_max_w)
+                                        pred_mean_width.append(pred_mean_w)
+                                        pred_median_width.append(pred_median_w)
+
+                                        #Once a true positive is found, break out of the loop
+                                        break
+
+                            if p_obj == pred_count:                                    
+                                false_negatives[GT_remap == obj] = obj
+
+                                #Add object information to lists
+                                pred_label_list.append(0)
+                                pred_px_cov_list.append(0)
+                                IoU_list.append(0)
+                                f1_score_list.append(0)
+
+                                pred_min_width.append(0)
+                                pred_max_width.append(0)
+                                pred_mean_width.append(0)
+                                pred_median_width.append(0)
+
+                                #IoU_per_obj_df = pd.concat([IoU_per_obj_df, pd.DataFrame([{'Grand_Parent_Folder': GP_folder, 'File_name': file,'GT_Label': obj, 'Prediction_Label': None, 'GT_Pixel_Coverage_Percent': GT_pixel_coverage, 'Prediction_Pixel_Coverage_Percent': 0, 'IoU': 0, 'f1_score': 0}])], ignore_index=True)
+                    """ # Pad pred_label list if necessary
+                    while len(pred_label_list) < len(GT_label_list):
+                        pred_label_list.append(0)
+                        pred_px_cov_list.append(0)
+                        IoU_list.append(0)
+                        f1_score_list.append(0) """
 
                     #Store false positives in the array image
                     false_positives[pred_remap != 0] = pred_remap[pred_remap != 0]
@@ -338,6 +434,30 @@ def per_object_statistics(directory, res_dir, obj_props_df):
                     false_negatives, false_negatives_count = ski.measure.label(false_negatives, background=0, return_num=True)
                     false_positives, false_positives_count = ski.measure.label(false_positives, background=0, return_num=True)
 
+                    #Store Object properties in a dataframe
+                    temp_df['Grand_Parent_Folder'] = GP_folder_list
+                    temp_df['File_name'] = file_name_list
+                    temp_df['GT_Label'] = GT_label_list
+                    temp_df['Prediction_Label'] = pred_label_list
+                    temp_df['GT_Pixel_Coverage_Percent'] = GT_px_cov_list
+                    temp_df['Prediction_Pixel_Coverage_Percent'] = pred_px_cov_list
+                    temp_df['IoU'] = IoU_list
+                    temp_df['f1_score'] = f1_score_list
+
+                    temp_df['GT_width_min'] = GT_min_width
+                    temp_df['GT_width_max'] = GT_max_width
+                    temp_df['GT_width_mean'] = GT_mean_width
+                    temp_df['GT_width_median'] = GT_median_width
+
+                    temp_df['pred_width_min'] = pred_min_width
+                    temp_df['pred_width_max'] = pred_max_width
+                    temp_df['pred_width_mean'] = pred_mean_width
+                    temp_df['pred_width_median'] = pred_median_width
+
+                    IoU_per_obj_df = pd.concat([IoU_per_obj_df, temp_df])
+                    
+                    #IoU_per_obj_df = pd.concat([IoU_per_obj_df, pd.DataFrame([{'Grand_Parent_Folder': GP_folder_list, 'File_name': file_name_list,'GT_Label': GT_label_list, 'Prediction_Label': pred_label_list, 'GT_Pixel_Coverage_Percent': GT_px_cov_list, 'Prediction_Pixel_Coverage_Percent': pred_px_cov_list, 'IoU': IoU_list, 'f1_score': f1_score_list}])])
+
                     filtered_df = IoU_per_obj_df[(IoU_per_obj_df['File_name'] == file) & (IoU_per_obj_df['Grand_Parent_Folder'] == GP_folder)]
                     mean_iou = filtered_df['IoU'].mean()
                     mean_f1 = filtered_df['f1_score'].mean()
@@ -350,6 +470,10 @@ def per_object_statistics(directory, res_dir, obj_props_df):
                 else:
                     print(f'Error: {file} has different shape in GT and Prediction folders.')
             #break
+
+    # Calculate summary Sensitivity/Recall and Accuracy
+    summary_df['Sensitivity'] = summary_df['true_positives_count'] / (summary_df['true_positives_count'] + summary_df['false_negatives_count'])
+    summary_df['Accuracy'] = summary_df['true_positives_count'] / (summary_df['true_positives_count'] + summary_df['false_positives_count'] + summary_df['false_negatives_count'])
 
     return summary_df, IoU_per_obj_df
 
@@ -459,3 +583,54 @@ def pixel_coverage_percent(img_array: np.array):
     pixel_coverage = 1 / obj_area * 100
 
     return pixel_coverage
+
+def bbox_points_for_crop(bbox, xmax ,ymax):
+    """
+    Calculate the top left and bottom right points of the bounding box.
+    
+    Args:
+        bbox: A list containing the x and y coordinates of the top left and bottom right points of the bounding box.
+        
+    Returns:
+        top_left: A list containing the x and y coordinates of the top left point of the bounding box.
+        bottom_right: A list containing the x and y coordinates of the bottom right point of the bounding box.
+    """
+    x1, y1, x2, y2 = bbox
+    x_radius = (x2 - x1 + 2) // 2
+    y_radius = (y2 - y1 + 2) // 2
+
+    x1 = (x1 - x_radius) if (x1 - x_radius) > 0 else 0 # if x1 - x_radius > 0
+    y1 = (y1 - y_radius) if (y1 - y_radius) > 0 else 0 # if y1 - y_radius > 0
+    x2 = (x2 + x_radius) if (x2 + x_radius) < xmax else xmax # if x2 + x_radius < xmax
+    y2 = (y2 + y_radius) if (y2 + y_radius) < ymax else ymax # if y2 + y_radius < ymax
+
+
+    return x1, x2, y1, y2
+
+def object_width(image_array: np.array):
+    """
+    Calculate the width of the object in the image array.
+    
+    Args:
+        image_array: A numpy/dataframe image array with a single object
+        
+    Returns:
+        min_width: The minimum width of the object in the image array.
+        max_width: The maximum width of the object in the image array.
+        mean_width: The mean width of the object in the image array.
+        median_width: The median width of the object in the image array.
+    """
+    # Calculate the object skeleton and Euclidean distance transform
+    obj_skeleton = ski.morphology.skeletonize(image_array)
+    obj_edt = ndimage.distance_transform_edt(image_array)
+    
+    # Get the EDT values for the object skeleton
+    obj_skeleton_edt = obj_skeleton * obj_edt
+
+    # Calculate the min, max, mean, and median width excluding the zero values of the background
+    min_width = np.min(obj_skeleton_edt[np.nonzero(obj_skeleton_edt)])
+    max_width = np.max(obj_skeleton_edt[np.nonzero(obj_skeleton_edt)])
+    mean_width = np.mean(obj_skeleton_edt[np.nonzero(obj_skeleton_edt)])
+    median_width = np.median(obj_skeleton_edt[np.nonzero(obj_skeleton_edt)])
+
+    return min_width, max_width, mean_width, median_width
