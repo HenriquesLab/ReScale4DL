@@ -40,9 +40,9 @@ def downsample_batch(input_folder_path: str, input_folder_name: str, downsamplin
         lbl = check_crop_img(lbl, downsampling_factor)
         imwrite(os.path.join(new_images_path, img_name), binning_img(img, downsampling_factor, keep_dims=keep_dims, mode=mode))
         if keep_dims:
-            imwrite(os.path.join(new_labels_path, img_name), lbl.astype(np.float16))
+            imwrite(os.path.join(new_labels_path, img_name), lbl.astype(np.uint16))
         else:
-            imwrite(os.path.join(new_labels_path, img_name), binning_label(lbl, downsampling_factor).astype(np.float16))
+            imwrite(os.path.join(new_labels_path, img_name), binning_label(lbl, downsampling_factor).astype(np.uint16))
 
 
 def upsample_batch(input_folder_path: str, input_folder_name: str, magnification: int, keep_dims: bool = False):
@@ -70,7 +70,7 @@ def upsample_batch(input_folder_path: str, input_folder_name: str, magnification
         img = imread(os.path.join(input_folder_path, "Images", img_name)).astype(np.float32)
         lbl = imread(os.path.join(input_folder_path, "Labels", img_name)).astype(np.float32)
         imwrite(os.path.join(new_images_path, img_name), upsample_img(img, magnification, keep_dims=keep_dims))
-        imwrite(os.path.join(new_labels_path, img_name), upsample_labels(lbl, magnification, keep_dims=keep_dims).astype(np.float16))
+        imwrite(os.path.join(new_labels_path, img_name), upsample_labels(lbl, magnification, keep_dims=keep_dims).astype(np.uint16))
 
 
 def blur_batch(input_folder_path: str, input_folder_name: str, gaussian_sigma: float):
@@ -93,7 +93,7 @@ def blur_batch(input_folder_path: str, input_folder_name: str, gaussian_sigma: f
         img = imread(os.path.join(input_folder_path, "Images", img_name)).astype(np.float32)
         lbl = imread(os.path.join(input_folder_path, "Labels", img_name)).astype(np.float32)
         imwrite(os.path.join(new_images_path, img_name), gaussian_blur(img, gaussian_sigma))
-        imwrite(os.path.join(new_labels_path, img_name), lbl.astype(np.float16))
+        imwrite(os.path.join(new_labels_path, img_name), lbl.astype(np.uint16))
 
 
 def process_batch(input_folder_path: str, input_folder_name: str, downsampling_factors: List[int], magnifications: List[int], gaussians: List[float], modes: List[str] = ["sum", "mean"]):
@@ -147,7 +147,6 @@ def process_all_datasets(datasets_path: str, downsampling_factor: List[int], mag
         os.mkdir(os.path.join(os.path.dirname(datasets_path), "Processed"))
 
     for fld in os.listdir(datasets_path):
-        print(os.path.join(datasets_path, fld))
         if os.path.isdir(os.path.join(datasets_path, fld)):
             process_batch(
                 os.path.join(datasets_path, fld),
