@@ -2,17 +2,17 @@
 
 #Import required libraries
 import os
-import numpy as np
-import pandas as pd
-import pypdf
+import numpy as np # type: ignore
+import pandas as pd # type: ignore
+import pypdf # type: ignore
 import re
-import matplotlib.pyplot as plt
-import seaborn as sns
-import skimage as ski
-from skimage.measure._regionprops_utils import perimeter
-from sklearn import metrics as skl
+import matplotlib.pyplot as plt # type: ignore
+import seaborn as sns # type: ignore
+import skimage as ski # type: ignore
+from skimage.measure._regionprops_utils import perimeter # type: ignore
+from sklearn import metrics as skl # type: ignore
 from time import perf_counter, strftime, gmtime
-from scipy import ndimage
+from scipy import ndimage # type: ignore
 from typing import List, Optional, Tuple, Dict, Literal
 
 
@@ -40,15 +40,21 @@ def morphology(main_directory: str) -> None:
         |  |  |  +-- Prediction
         |  |  |  |  +-- images.tiff
     """
-                                                    
+
+    # Get contents of the directory and start timer                                                
     directory_list = os.listdir(main_directory)
     begin_time = perf_counter()
 
+    # Loop through the sub directories
     for dir in directory_list:
+        curr_dir = os.path.join(main_directory, dir)
+        # Skip misc folders
         if dir in ['.DS_Store', '__pycache__', 'blank', 'main_folder']:
             continue
+        # Skip if not a directory
+        elif not os.path.isdir(curr_dir):
+            continue
         else:
-            curr_dir = os.path.join(main_directory, dir)
             print('Calculating properties for ' + dir)
 
             # Create folder to store results if it doesn't exist, if it exists make new one
@@ -65,11 +71,15 @@ def morphology(main_directory: str) -> None:
                     count += 1
                 os.mkdir(res_dir)
 
+            # Calculate properties 
             per_object_statistics(directory = curr_dir,
                                   res_dir=res_dir)
 
             semantic_statistics(directory = curr_dir,
                                 res_dir=res_dir)
+            
+            binary_mask_statistics(directory = curr_dir,
+                                  res_dir=res_dir)
 
     print(f'Total time: {strftime("%H:%M:%S", gmtime(perf_counter() - begin_time))}')
 
@@ -80,17 +90,16 @@ def morphology(main_directory: str) -> None:
 def per_object_statistics(
         directory: str,
         res_dir: str,
-    ) -> Tuple:
+    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Calculate the IoU, f1 score, and other statistics for each object in the image.
     
     Args:
         directory (str): Directory with folders of sampling folders with GT and Prediction folder pairs inside.
         res_dir (str): Directory to save the results.
-        obj_props_df (pd.DataFrame): A table containing the calculated properties for each region.
     
     Returns:
-        Tuple[pd.DataFrame, pd.DataFrame]: A tuple of two dataframes. The first contains per object IoU and f1 score statistics. The second contains a summary of the statistics.
+        Tuple[pd.DataFrame, pd.DataFrame]: A tuple of two dataframes. The first contains per object IoU and f1 score statistics. The second contains a summary of the statistics per field of view.
     """
 
     # Create a dictionary of parent folders and grand parent folders
@@ -183,7 +192,6 @@ def per_object_statistics(
                 # Print the number of objects in each image
                 print(f'{file} from {GP_folder} has {GT_count} objects in GT and {pred_count} objects in Prediction')
                 
-
                 # Get Bounding Boxes coords for each GT object
                 bbox_list = pd.DataFrame(ski.measure.regionprops_table(GT_remap, properties=['label', 'bbox'], spacing=(1,1)))
 
@@ -226,6 +234,7 @@ def per_object_statistics(
                     GT_area_filled_list.append(gt_area_filled)
                     GT_perimeter_list.append(gt_perimeter)
 
+                    # If the current object is not present in Prediction set values to 0 or NaN
                     if pred_count == 0:
                         pred_label_list.append(0)
                         pred_px_cov_list.append(0)
@@ -246,6 +255,7 @@ def per_object_statistics(
                     # Copy the remaped Prediction image
                     pred_obj_main = pred_remap[x1:x2, y1:y2]
 
+                    # If the current FOV has no objects in Prediction set values to 0 or NaN and add to false negatives
                     if len(np.unique(pred_obj_main)) == 1:                                    
                         false_negatives[GT_remap == obj] = obj
 
@@ -265,10 +275,13 @@ def per_object_statistics(
 
                         continue
 
+                    # If there is an object in the current FOV
+                    # For each object in the current FOV
                     else:
                         for p_obj in np.unique(pred_obj_main):
                             pred_obj = pred_obj_main == p_obj
 
+                            #Calculate IoU
                             intersection = np.logical_and(GT_obj, pred_obj)
                             union = np.logical_or(GT_obj, pred_obj)
                             iou_score =  np.sum(intersection) / np.sum(union)
@@ -304,6 +317,7 @@ def per_object_statistics(
                                 #Once a true positive is found, break out of the loop
                                 break
                             
+                            # If no Prediction object matches the GT object
                             if p_obj == np.unique(pred_obj_main)[-1]:
                                 #Add object information to lists
                                 pred_label_list.append(0)
@@ -413,17 +427,16 @@ def per_object_statistics(
 def semantic_statistics(
         directory: str,
         res_dir: str
-    ) -> Tuple:
+    ) -> pd.DataFrame:
     """
     Calculate the IoU, f1 score, and other statistics for each label in the semantic segmentation GT and Prediction images. Only for 2 labels + background.
     
     Args:
         directory (str): Directory with folders of sampling folders with GT and Prediction folder pairs inside.
         res_dir (str): Directory to save the results.
-        obj_props_df (pd.DataFrame): A table containing the calculated properties for each region.
     
     Returns:
-        Tuple[pd.DataFrame, pd.DataFrame]: A tuple of two dataframes. The first contains per object IoU and f1 score statistics. The second contains a summary of the statistics.
+        pd.DataFrame: A dataframe containing per semantic label and average IoU and f1 score statistics.
     """
 
     # Create a dictionary of parent folders and grand parent folders
@@ -448,6 +461,7 @@ def semantic_statistics(
         GT_path = os.path.join(directory, GP_folder, 'GT')
         pred_path = os.path.join(directory, GP_folder, 'Prediction')
 
+        # Check if the GT and Prediction folders exist
         if not os.path.exists(GT_path) or not os.path.exists(pred_path):
             continue
 
@@ -480,12 +494,14 @@ def semantic_statistics(
                 GT_count = np.max(GT_img)
                 pred_count = np.max(pred_img)
                 
+                # Check the number of labels in GT and Prediction, if above 2 skip semantic analysis 
                 if GT_count !=2 or pred_count != 2 or GT_count != pred_count:
                     continue
 
                 # Print the number of objects in each image
                 print(f'Calculating Semantic Segmentation statistics for {file} from {GP_folder}.')
 
+                # Loop through the 2 labels
                 for obj in range(1, 3):
                     # Extract the object from the GT
                     GT_obj = GT_img == obj
@@ -494,8 +510,8 @@ def semantic_statistics(
                     #Calculate IoU and f1 score
                     intersection = np.logical_and(GT_obj, pred_obj)
                     union = np.logical_or(GT_obj, pred_obj)
-
                     iou_score =  np.sum(intersection) / np.sum(union)
+
                     f1_score = skl.f1_score(GT_obj, pred_obj, average='micro')
 
                     #Add object information to lists
@@ -534,8 +550,9 @@ def semantic_statistics(
     IoU_per_SS_df['IoU'] = IoU_list
     IoU_per_SS_df['f1_score'] = f1_score_list
 
+    # Check if the dataframe is empty if not save the results as csv
     if len(GP_folder_list) != 0:
-        # Save IoU per object statistics in csv file
+        # Save IoU per semantic label statistics in csv file
         IoU_per_SS_df.to_csv(os.path.join(res_dir, directory.split(os.sep)[-1] +'_semantic_segmentation_stats.csv'))
 
         print('Done.')
@@ -546,91 +563,131 @@ def semantic_statistics(
         print('No semantic segmentation images found.')
         return None
         
+def binary_mask_statistics(
+        directory: str,
+        res_dir: str
+    ) -> pd.DataFrame:
+    """
+    Calculate the IoU, f1 score, and other statistics for a binary mask image from the semantic segmentation GT and Prediction images.
+    
+    Args:
+        directory (str): Directory with folders of sampling folders with GT and Prediction folder pairs inside.
+        res_dir (str): Directory to save the results.
+    
+    Returns:
+        pd.DataFrame: A dataframe containing the binary mask IoU and f1 score statistics.
+    """
 
+    # Create a dictionary of parent folders and grand parent folders
+    parent_folder_dict = {'Grand_Parent_Folder': ['upsampling_16', 'upsampling_8', 'upsampling_4', 'upsampling_2', 'OG', 'downsampling_2', 'downsampling_4', 'downsampling_8', 'downsampling_16'], 'Parent_Folder': ['GT', 'Prediction']}
+    GP_dict = parent_folder_dict['Grand_Parent_Folder']
+
+    # Create dataframes to store the results
+    IoU_per_BN_df = pd.DataFrame([])
+    start_time = None
+
+    # Lists to store all the data
+    GP_folder_list = []
+    file_name_list = []
+    GT_label_list = []
+    pred_label_list = []
+    IoU_list = []
+    f1_score_list = []
+
+    # Loop through the parent folders
+    for GP_folder in sorted(GP_dict):
+        # Create the path variable to the GT and Prediction folders
+        GT_path = os.path.join(directory, GP_folder, 'GT')
+        pred_path = os.path.join(directory, GP_folder, 'Prediction')
+
+        # Check if the GT and Prediction folders exist
+        if not os.path.exists(GT_path) or not os.path.exists(pred_path):
+            continue
+
+        #Create results sub-folder if it doesn't exist
+        res_pred_dir = os.path.join(res_dir, GP_folder)
+        if not os.path.exists(res_pred_dir):
+            os.mkdir(res_pred_dir)
+
+        # Get the list of GT and Prediction .tif files
+        GT_file_list = [file for file in os.listdir(GT_path) if file.endswith('.tif')]
+        pred_file_list = [file for file in os.listdir(pred_path) if file.endswith('.tif')]
+
+        # Get the list of the paired files (both GT and Prediction .tif files)
+        paired_files = list(set(GT_file_list) & set(pred_file_list))
+
+        # Loop through the paired files
+        for file in paired_files:
+            GT_img = ski.io.imread(os.path.join(GT_path, file))
+            pred_img = ski.io.imread(os.path.join(pred_path, file))
+            start_time = perf_counter()
+            
+            # Check if the shape of the GT is bigger than the Prediction are the same and pad Prediction if not
+            if GT_img.shape > pred_img.shape:
+                print(f'{file} from {GP_folder} has shape {GT_img.shape} in GT and {pred_img.shape} in Prediction. Padded Prediction to match GT shape.')
+                pred_img = pad_br_with_zeroes(GT_img, pred_img)
+
+            # Check if the shape of the GT and Prediction images are the same
+            if GT_img.shape == pred_img.shape:
+                # Calculate the number of objects in each image and remap the labels
+                GT_count = np.max(GT_img)
+                pred_count = np.max(pred_img)
+                
+                # Check the number of labels in GT and Prediction, if above 2 skip semantic analysis 
+                if GT_count !=2 or pred_count != 2 or GT_count != pred_count:
+                    continue
+
+                # Print the number of objects in each image
+                print(f'Calculating Binary Mask statistics for {file} from {GP_folder}.')
+
+                # Extract the object from the GT
+                GT_obj = GT_img != 0
+                pred_obj = pred_img != 0
+
+                #Calculate IoU and f1 score
+                intersection = np.logical_and(GT_obj, pred_obj)
+                union = np.logical_or(GT_obj, pred_obj)
+                iou_score =  np.sum(intersection) / np.sum(union)
+
+                f1_score = skl.f1_score(GT_obj, pred_obj, average='micro')
+
+                #Add object information to lists
+                GP_folder_list.append(GP_folder)
+                file_name_list.append(file)
+                GT_label_list.append('mask')
+                pred_label_list.append('mask')
+                IoU_list.append(iou_score)
+                f1_score_list.append(f1_score)
+
+            else:
+                print(f'Error: {file} has different shape in GT and Prediction folders.')
+
+            if start_time is not None:
+                    print(f'Elapsed time: {strftime("%H:%M:%S", gmtime(perf_counter() - start_time))}')
+                
+    #Store Object properties in a dataframe
+    IoU_per_BN_df['Grand_Parent_Folder'] = GP_folder_list
+    IoU_per_BN_df['File_name'] = file_name_list
+    IoU_per_BN_df['GT_Label'] = GT_label_list
+    IoU_per_BN_df['Prediction_Label'] = pred_label_list
+    IoU_per_BN_df['IoU'] = IoU_list
+    IoU_per_BN_df['f1_score'] = f1_score_list
+
+    # If dataframe is not empty save the results as csv
+    if len(GP_folder_list) != 0:
+        # Save IoU per object statistics in csv file
+        IoU_per_BN_df.to_csv(os.path.join(res_dir, directory.split(os.sep)[-1] +'_binary_mask_stats.csv'))
+
+        print('Done.')
+
+        return IoU_per_BN_df
+
+    else:
+        return None
+        
 
 ## Plot generating functions
 
-
-def generate_basic_plot(
-    res_dir: str, 
-    dataframe: pd.DataFrame, 
-    folder_sampling_dict: Dict[str, float], 
-    column_to_plot: str, 
-    kind_of_plot: Literal['split_violin', 'violin', 'box', 'box_no_outliers', 'strip', 'swarm'], 
-    log_scale: bool, 
-    hue: Optional[str] = 'Parent_Folder', 
-    save: bool = True
-) -> Optional[sns.FacetGrid]:
-    """
-    Generate a plot of the properties of the objects in the image.
-    
-    Args:
-        res_dir (str): The directory to save the plot.
-        dataframe (pd.DataFrame): A dataframe containing the properties of the objects in the image.
-        folder_sampling_dict (Dict[str, float]): A dictionary of grandparent folders and their sampling multipliers. 
-        column_to_plot (str): The column to plot on the y-axis.
-        kind_of_plot (Literal['split_violin', 'violin', 'box', 'box_no_outliers', 'strip', 'swarm']): The kind of plot to generate. Use split_violin for a violin plot split by parent folder.
-        log_scale (bool): Whether to use a logarithmic scale for the y-axis.
-        hue (Optional[str]): The column to use for hue. Defaults to 'Parent_Folder'.
-        save (bool): Whether to save the plot or return it. Defaults to True.
-    
-    Returns:
-        Optional[sns.FacetGrid]: A plot of the properties in the column_to_plot of the objects in the image, or None if save is False.
-    """
-    # Re-order and remove unnecessary sampling folder names for x-axis
-    order = order_axis_by_folder(folder_sampling_dict, dataframe)
-
-    # Set seaborn plot theme and style - set the grid, ticks, and edge color
-    sns.set_theme(context = 'talk', style = 'white', rc = {'axes.grid': True, 'xtick.bottom': True,'ytick.left': True, 'axes.edgecolor': 'black'}, palette = 'colorblind')
-
-    # Generate plot, violin type plots have extra arguments
-    if kind_of_plot == 'split_violin':
-        kind_of_plot = 'violin'
-
-        # In this type of violin plot each half of the violin represents a parent folder
-        plot = sns.catplot(data = dataframe, x = 'Grand_Parent_Folder', y = column_to_plot, kind = kind_of_plot, hue = hue,  order = order, log_scale = log_scale, height = 7, aspect = 1.5, split = True, inner = 'quart')
-
-    elif kind_of_plot == 'violin':
-        # In this type of violin plot each parent folder has its own violin plot
-        plot = sns.catplot(data = dataframe, x = 'Grand_Parent_Folder', y = column_to_plot, kind = kind_of_plot, hue = hue,  order = order, log_scale = log_scale, height = 7, aspect = 1.5, inner = 'quart')
-
-    elif kind_of_plot == 'box_no_outliers':
-        kind_of_plot = 'box'
-        
-        # In this type of box plot outliers are not shown
-        plot = sns.catplot(data = dataframe, x = 'Grand_Parent_Folder', y = column_to_plot, kind = kind_of_plot, hue = hue,  order = order, log_scale = log_scale, height = 7, aspect = 1.5, showfliers=False, gap = 0.2)
-
-    elif kind_of_plot in ['strip', 'swarm']:
-        # increases size of dot in plot
-        plot = sns.catplot(data = dataframe, x = 'Grand_Parent_Folder', y = column_to_plot, kind = kind_of_plot, hue = hue,  order = order, log_scale = log_scale, height = 7, aspect = 1.5, s = 200,edgecolor = 'black', linewidth = 2)
-    
-    else:
-        # Generic plot creation for all other types
-        plot = sns.catplot(data = dataframe, x = 'Grand_Parent_Folder', y = column_to_plot, kind = kind_of_plot, hue = hue,  order = order, log_scale = log_scale, height = 7, aspect = 1.5)
-
-    # Customize the plot
-    # Axis titles and Axis labels rotation 
-    plt.xlabel('Sampling')
-    plt.ylabel(column_to_plot.replace('_', ' '))
-    plt.xticks(rotation = 30)
-
-    # Move legend to top left and close plot
-    if hue != None:
-        sns.move_legend(plot, "lower center", bbox_to_anchor = (0.2, 0.83), ncol = 1,title = None, frameon = True)
-    sns.despine(top = False, right = False) 
-
-    if save == True:
-        # Set and create folder to store graphs if it doesn't exist
-        res_graph_dir = os.path.join(res_dir, 'Graphs')
-
-        if not os.path.exists(res_graph_dir):
-            os.mkdir(res_graph_dir)
-
-        # Save plot as svg to allow for easy rescaling
-        plot.savefig(res_graph_dir + os.sep + column_to_plot +'_' + kind_of_plot + '_plot.svg', dpi = 300, bbox_inches = 'tight')
-
-    else:
-        return plot
 
 def box_strip_plot_from_csv(
     csv_1: str, 
@@ -756,6 +813,7 @@ def box_strip_plot_from_df(
                     'size': 7,
                     }
 
+    # set plot color palette if hue is given or not
     if hue != None:
         plot_args_box['hue'] = hue
         plot_args_box['palette'] = pastel_colors
@@ -1293,6 +1351,88 @@ def normalize_to_sampling(
 
 ## Deprecated Functions
 
+
+def generate_basic_plot(
+    res_dir: str, 
+    dataframe: pd.DataFrame, 
+    folder_sampling_dict: Dict[str, float], 
+    column_to_plot: str, 
+    kind_of_plot: Literal['split_violin', 'violin', 'box', 'box_no_outliers', 'strip', 'swarm'], 
+    log_scale: bool, 
+    hue: Optional[str] = 'Parent_Folder', 
+    save: bool = True
+) -> Optional[sns.FacetGrid]:
+    """
+    Generate a plot of the properties of the objects in the image.
+    
+    Args:
+        res_dir (str): The directory to save the plot.
+        dataframe (pd.DataFrame): A dataframe containing the properties of the objects in the image.
+        folder_sampling_dict (Dict[str, float]): A dictionary of grandparent folders and their sampling multipliers. 
+        column_to_plot (str): The column to plot on the y-axis.
+        kind_of_plot (Literal['split_violin', 'violin', 'box', 'box_no_outliers', 'strip', 'swarm']): The kind of plot to generate. Use split_violin for a violin plot split by parent folder.
+        log_scale (bool): Whether to use a logarithmic scale for the y-axis.
+        hue (Optional[str]): The column to use for hue. Defaults to 'Parent_Folder'.
+        save (bool): Whether to save the plot or return it. Defaults to True.
+    
+    Returns:
+        Optional[sns.FacetGrid]: A plot of the properties in the column_to_plot of the objects in the image, or None if save is False.
+    """
+    # Re-order and remove unnecessary sampling folder names for x-axis
+    order = order_axis_by_folder(folder_sampling_dict, dataframe)
+
+    # Set seaborn plot theme and style - set the grid, ticks, and edge color
+    sns.set_theme(context = 'talk', style = 'white', rc = {'axes.grid': True, 'xtick.bottom': True,'ytick.left': True, 'axes.edgecolor': 'black'}, palette = 'colorblind')
+
+    # Generate plot, violin type plots have extra arguments
+    if kind_of_plot == 'split_violin':
+        kind_of_plot = 'violin'
+
+        # In this type of violin plot each half of the violin represents a parent folder
+        plot = sns.catplot(data = dataframe, x = 'Grand_Parent_Folder', y = column_to_plot, kind = kind_of_plot, hue = hue,  order = order, log_scale = log_scale, height = 7, aspect = 1.5, split = True, inner = 'quart')
+
+    elif kind_of_plot == 'violin':
+        # In this type of violin plot each parent folder has its own violin plot
+        plot = sns.catplot(data = dataframe, x = 'Grand_Parent_Folder', y = column_to_plot, kind = kind_of_plot, hue = hue,  order = order, log_scale = log_scale, height = 7, aspect = 1.5, inner = 'quart')
+
+    elif kind_of_plot == 'box_no_outliers':
+        kind_of_plot = 'box'
+        
+        # In this type of box plot outliers are not shown
+        plot = sns.catplot(data = dataframe, x = 'Grand_Parent_Folder', y = column_to_plot, kind = kind_of_plot, hue = hue,  order = order, log_scale = log_scale, height = 7, aspect = 1.5, showfliers=False, gap = 0.2)
+
+    elif kind_of_plot in ['strip', 'swarm']:
+        # increases size of dot in plot
+        plot = sns.catplot(data = dataframe, x = 'Grand_Parent_Folder', y = column_to_plot, kind = kind_of_plot, hue = hue,  order = order, log_scale = log_scale, height = 7, aspect = 1.5, s = 200,edgecolor = 'black', linewidth = 2)
+    
+    else:
+        # Generic plot creation for all other types
+        plot = sns.catplot(data = dataframe, x = 'Grand_Parent_Folder', y = column_to_plot, kind = kind_of_plot, hue = hue,  order = order, log_scale = log_scale, height = 7, aspect = 1.5)
+
+    # Customize the plot
+    # Axis titles and Axis labels rotation 
+    plt.xlabel('Sampling')
+    plt.ylabel(column_to_plot.replace('_', ' '))
+    plt.xticks(rotation = 30)
+
+    # Move legend to top left and close plot
+    if hue != None:
+        sns.move_legend(plot, "lower center", bbox_to_anchor = (0.2, 0.83), ncol = 1,title = None, frameon = True)
+    sns.despine(top = False, right = False) 
+
+    if save == True:
+        # Set and create folder to store graphs if it doesn't exist
+        res_graph_dir = os.path.join(res_dir, 'Graphs')
+
+        if not os.path.exists(res_graph_dir):
+            os.mkdir(res_graph_dir)
+
+        # Save plot as svg to allow for easy rescaling
+        plot.savefig(res_graph_dir + os.sep + column_to_plot +'_' + kind_of_plot + '_plot.svg', dpi = 300, bbox_inches = 'tight')
+
+    else:
+        return plot
+    
 
 def prediction_statistics(parent_folder_dict, directory):
     """
