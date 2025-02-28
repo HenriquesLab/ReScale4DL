@@ -7,24 +7,31 @@ import pandas as pd # type: ignore
 import pypdf # type: ignore
 import re
 import matplotlib.pyplot as plt # type: ignore
+from matplotlib.ticker import MaxNLocator   # type: ignore
 import seaborn as sns # type: ignore
 import skimage as ski # type: ignore
 from skimage.measure._regionprops_utils import perimeter # type: ignore
 from sklearn import metrics as skl # type: ignore
 from time import perf_counter, strftime, gmtime
 from scipy import ndimage # type: ignore
-from typing import List, Optional, Tuple, Dict, Literal
+from typing import List, Optional, Tuple, Dict, Literal, Union
+import ast
+import math
 
 
 ## Main Function
 
 
-def morphology(main_directory: str) -> None:
+def morphology(
+        main_directory: str,
+        skip_directories: Optional[List[str]] = ['.DS_Store', '__pycache__'],
+        sampling_dir_list: Optional[List[str]] = ['upsampling_16', 'upsampling_8', 'upsampling_4', 'upsampling_2', 'OG', 'downsampling_2', 'downsampling_4', 'downsampling_8', 'downsampling_16'],
+        ) -> None:
     """
     Calculate the properties for each object in each image in the input directory.
     
     Args:
-        directory (str): The input directory containing the sub folders contating the image files.
+        main_directory (str): The input directory containing the sub folders contating the image files.
         
     Expected file arrangement example: 
         +-- main_directory
@@ -46,42 +53,51 @@ def morphology(main_directory: str) -> None:
     begin_time = perf_counter()
 
     # Loop through the sub directories
-    for dir in directory_list:
-        curr_dir = os.path.join(main_directory, dir)
+    for sub_dir in directory_list:
+        curr_dir = os.path.join(main_directory, sub_dir)
+        
         # Skip misc folders
-        if dir in ['.DS_Store', '__pycache__', 'blank', 'main_folder']:
+        if sub_dir in skip_directories:
             continue
+        
         # Skip if not a directory
         elif not os.path.isdir(curr_dir):
             continue
+        
+        # Remaning sub directories are the ones to calculate properties for
         else:
-            print('Calculating properties for ' + dir)
+            print('Calculating properties for ' + sub_dir)
 
             # Create folder to store results if it doesn't exist, if it exists make new one
-            res_dir = os.path.join(curr_dir, 'Results')
-            base_res_dir = res_dir
+            result_dir = os.path.join(curr_dir, 'Results')
+            base_result_dir = result_dir
             count = 1
 
-            if not os.path.exists(res_dir):
-                os.mkdir(res_dir)
+            if not os.path.exists(result_dir):
+                os.mkdir(result_dir)
             
             else:
-                while os.path.exists(res_dir):
-                    res_dir = base_res_dir + '_' + f"{count:02d}"
+                while os.path.exists(result_dir):
+                    result_dir = base_result_dir + '_' + f"{count:02d}"
                     count += 1
-                os.mkdir(res_dir)
+                os.mkdir(result_dir)
 
             # Calculate properties 
             per_object_statistics(directory = curr_dir,
-                                  res_dir=res_dir)
+                                  result_dir = result_dir,
+                                  sampling_dir_list = sampling_dir_list)
 
             semantic_statistics(directory = curr_dir,
-                                res_dir=res_dir)
+                                result_dir = result_dir,
+                                sampling_dir_list = sampling_dir_list)
             
             binary_mask_statistics(directory = curr_dir,
-                                  res_dir=res_dir)
+                                  result_dir = result_dir,
+                                  sampling_dir_list = sampling_dir_list)
 
-    print(f'Total time: {strftime("%H:%M:%S", gmtime(perf_counter() - begin_time))}')
+    # Print total time taken
+    total_time = strftime("%H:%M:%S", gmtime(perf_counter() - begin_time))
+    print(f'Total time: {total_time}')
 
 
 ## Per object Prediction statistics functions
@@ -89,23 +105,22 @@ def morphology(main_directory: str) -> None:
 
 def per_object_statistics(
         directory: str,
-        res_dir: str,
+        result_dir: str,
+        sampling_dir_list: Optional[List[str]] = ['upsampling_16', 'upsampling_8', 'upsampling_4', 'upsampling_2', 'OG', 'downsampling_2', 'downsampling_4', 'downsampling_8', 'downsampling_16'],
     ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Calculate the IoU, f1 score, and other statistics for each object in the image.
     
     Args:
         directory (str): Directory with folders of sampling folders with GT and Prediction folder pairs inside.
-        res_dir (str): Directory to save the results.
+        result_dir (str): Directory to save the results.
     
     Returns:
-        Tuple[pd.DataFrame, pd.DataFrame]: A tuple of two dataframes. The first contains per object IoU and f1 score statistics. The second contains a summary of the statistics per field of view.
+        Tuple[pd.DataFrame, pd.DataFrame]: 
+            - The first dataframe contains per object IoU and f1 score statistics, for Ground Truth and Prediction.
+            - The second dataframe contains a summary of the statistics per field of view, including Sensitivity and Accuracy, for Ground Truth and Prediction.
     """
-
-    # Create a dictionary of parent folders and grand parent folders
-    parent_folder_dict = {'Grand_Parent_Folder': ['upsampling_16', 'upsampling_8', 'upsampling_4', 'upsampling_2', 'OG', 'downsampling_2', 'downsampling_4', 'downsampling_8', 'downsampling_16'], 'Parent_Folder': ['GT', 'Prediction']}
-    GP_dict = parent_folder_dict['Grand_Parent_Folder']
-
+    
     # Create dataframes to store the results
     IoU_per_obj_df = pd.DataFrame([])
     summary_df = pd.DataFrame([])
@@ -150,7 +165,7 @@ def per_object_statistics(
     pred_count_count = []
 
     # Loop through the parent folders
-    for GP_folder in sorted(GP_dict):
+    for GP_folder in sorted(sampling_dir_list):
         # Create the path variable to the GT and Prediction folders
         GT_path = os.path.join(directory, GP_folder, 'GT')
         pred_path = os.path.join(directory, GP_folder, 'Prediction')
@@ -159,7 +174,7 @@ def per_object_statistics(
             continue
 
         #Create results sub-folder if it doesn't exist
-        res_pred_dir = os.path.join(res_dir, GP_folder)
+        res_pred_dir = os.path.join(result_dir, GP_folder)
         if not os.path.exists(res_pred_dir):
             os.mkdir(res_pred_dir)
 
@@ -355,7 +370,7 @@ def per_object_statistics(
                 print(f'Error: {file} has different shape in GT and Prediction folders.')
 
             if start_time is not None:
-                    print(f'Elapsed time: {strftime("%H:%M:%S", gmtime(perf_counter() - start_time))}')
+                print(f'Elapsed time: {strftime("%H:%M:%S", gmtime(perf_counter() - start_time))}')
                 
     # Store Object properties in a dataframe
     IoU_per_obj_df['Grand_Parent_Folder'] = GP_folder_list
@@ -415,10 +430,10 @@ def per_object_statistics(
     summary_df['Accuracy'] = summary_df['true_positives_count'] / (summary_df['true_positives_count'] + summary_df['false_positives_count'] + summary_df['false_negatives_count'])
 
     # Save summary statistics in csv file
-    summary_df.to_csv(os.path.join(res_dir, directory.split(os.sep)[-1] +'_summary_stats.csv'))    
+    summary_df.to_csv(os.path.join(result_dir, directory.split(os.sep)[-1] +'_summary_stats.csv'))    
 
     # Save IoU per object statistics in csv file
-    IoU_per_obj_df.to_csv(os.path.join(res_dir, directory.split(os.sep)[-1] +'_IoU_per_obj_stats.csv'))
+    IoU_per_obj_df.to_csv(os.path.join(result_dir, directory.split(os.sep)[-1] +'_IoU_per_obj_stats.csv'))
 
     print('Done.')
 
@@ -426,22 +441,19 @@ def per_object_statistics(
 
 def semantic_statistics(
         directory: str,
-        res_dir: str
+        result_dir: str,
+        sampling_dir_list: Optional[List[str]] = ['upsampling_16', 'upsampling_8', 'upsampling_4', 'upsampling_2', 'OG', 'downsampling_2', 'downsampling_4', 'downsampling_8', 'downsampling_16'],
     ) -> pd.DataFrame:
     """
     Calculate the IoU, f1 score, and other statistics for each label in the semantic segmentation GT and Prediction images. Only for 2 labels + background.
     
     Args:
         directory (str): Directory with folders of sampling folders with GT and Prediction folder pairs inside.
-        res_dir (str): Directory to save the results.
+        result_dir (str): Directory to save the results.
     
     Returns:
         pd.DataFrame: A dataframe containing per semantic label and average IoU and f1 score statistics.
     """
-
-    # Create a dictionary of parent folders and grand parent folders
-    parent_folder_dict = {'Grand_Parent_Folder': ['upsampling_16', 'upsampling_8', 'upsampling_4', 'upsampling_2', 'OG', 'downsampling_2', 'downsampling_4', 'downsampling_8', 'downsampling_16'], 'Parent_Folder': ['GT', 'Prediction']}
-    GP_dict = parent_folder_dict['Grand_Parent_Folder']
 
     # Create dataframes to store the results
     IoU_per_SS_df = pd.DataFrame([])
@@ -456,7 +468,7 @@ def semantic_statistics(
     f1_score_list = []
 
     # Loop through the parent folders
-    for GP_folder in sorted(GP_dict):
+    for GP_folder in sorted(sampling_dir_list):
         # Create the path variable to the GT and Prediction folders
         GT_path = os.path.join(directory, GP_folder, 'GT')
         pred_path = os.path.join(directory, GP_folder, 'Prediction')
@@ -466,7 +478,7 @@ def semantic_statistics(
             continue
 
         #Create results sub-folder if it doesn't exist
-        res_pred_dir = os.path.join(res_dir, GP_folder)
+        res_pred_dir = os.path.join(result_dir, GP_folder)
         if not os.path.exists(res_pred_dir):
             os.mkdir(res_pred_dir)
 
@@ -540,7 +552,7 @@ def semantic_statistics(
                 print(f'Error: {file} has different shape in GT and Prediction folders.')
 
             if start_time is not None:
-                    print(f'Elapsed time: {strftime("%H:%M:%S", gmtime(perf_counter() - start_time))}')
+                print(f'Elapsed time: {strftime("%H:%M:%S", gmtime(perf_counter() - start_time))}')
                 
     #Store Object properties in a dataframe
     IoU_per_SS_df['Grand_Parent_Folder'] = GP_folder_list
@@ -553,7 +565,7 @@ def semantic_statistics(
     # Check if the dataframe is empty if not save the results as csv
     if len(GP_folder_list) != 0:
         # Save IoU per semantic label statistics in csv file
-        IoU_per_SS_df.to_csv(os.path.join(res_dir, directory.split(os.sep)[-1] +'_semantic_segmentation_stats.csv'))
+        IoU_per_SS_df.to_csv(os.path.join(result_dir, directory.split(os.sep)[-1] +'_semantic_segmentation_stats.csv'))
 
         print('Done.')
 
@@ -565,22 +577,19 @@ def semantic_statistics(
         
 def binary_mask_statistics(
         directory: str,
-        res_dir: str
+        result_dir: str,
+        sampling_dir_list: Optional[List[str]] = ['upsampling_16', 'upsampling_8', 'upsampling_4', 'upsampling_2', 'OG', 'downsampling_2', 'downsampling_4', 'downsampling_8', 'downsampling_16'],
     ) -> pd.DataFrame:
     """
     Calculate the IoU, f1 score, and other statistics for a binary mask image from the semantic segmentation GT and Prediction images.
     
     Args:
         directory (str): Directory with folders of sampling folders with GT and Prediction folder pairs inside.
-        res_dir (str): Directory to save the results.
+        result_dir (str): Directory to save the results.
     
     Returns:
         pd.DataFrame: A dataframe containing the binary mask IoU and f1 score statistics.
     """
-
-    # Create a dictionary of parent folders and grand parent folders
-    parent_folder_dict = {'Grand_Parent_Folder': ['upsampling_16', 'upsampling_8', 'upsampling_4', 'upsampling_2', 'OG', 'downsampling_2', 'downsampling_4', 'downsampling_8', 'downsampling_16'], 'Parent_Folder': ['GT', 'Prediction']}
-    GP_dict = parent_folder_dict['Grand_Parent_Folder']
 
     # Create dataframes to store the results
     IoU_per_BN_df = pd.DataFrame([])
@@ -595,7 +604,7 @@ def binary_mask_statistics(
     f1_score_list = []
 
     # Loop through the parent folders
-    for GP_folder in sorted(GP_dict):
+    for GP_folder in sorted(sampling_dir_list):
         # Create the path variable to the GT and Prediction folders
         GT_path = os.path.join(directory, GP_folder, 'GT')
         pred_path = os.path.join(directory, GP_folder, 'Prediction')
@@ -605,7 +614,7 @@ def binary_mask_statistics(
             continue
 
         #Create results sub-folder if it doesn't exist
-        res_pred_dir = os.path.join(res_dir, GP_folder)
+        res_pred_dir = os.path.join(result_dir, GP_folder)
         if not os.path.exists(res_pred_dir):
             os.mkdir(res_pred_dir)
 
@@ -663,7 +672,7 @@ def binary_mask_statistics(
                 print(f'Error: {file} has different shape in GT and Prediction folders.')
 
             if start_time is not None:
-                    print(f'Elapsed time: {strftime("%H:%M:%S", gmtime(perf_counter() - start_time))}')
+                print(f'Elapsed time: {strftime("%H:%M:%S", gmtime(perf_counter() - start_time))}')
                 
     #Store Object properties in a dataframe
     IoU_per_BN_df['Grand_Parent_Folder'] = GP_folder_list
@@ -676,7 +685,7 @@ def binary_mask_statistics(
     # If dataframe is not empty save the results as csv
     if len(GP_folder_list) != 0:
         # Save IoU per object statistics in csv file
-        IoU_per_BN_df.to_csv(os.path.join(res_dir, directory.split(os.sep)[-1] +'_binary_mask_stats.csv'))
+        IoU_per_BN_df.to_csv(os.path.join(result_dir, directory.split(os.sep)[-1] +'_binary_mask_stats.csv'))
 
         print('Done.')
 
@@ -689,180 +698,796 @@ def binary_mask_statistics(
 ## Plot generating functions
 
 
-def box_strip_plot_from_csv(
-    csv_1: str, 
-    x_axis: str, 
-    y_axis: str, 
-    y_range: Optional[List[float]] = None, 
-    og_px: Optional[int] = None, 
-    save_dir: Optional[str] = None,  
-    csv_2: Optional[str] = None
-) -> None:
+def generate_binary_semantic_box_plot(
+        folder_path: str, 
+        dataset_SS: str, 
+        dataset_name: str, 
+        fig_name: str, 
+        y_axis: str,  
+        output_path: Optional[str] = None,
+        palette: Optional[list] = ['#1f77b4', '#ff9f9b'],
+        fig_width: Optional[int] = 4.2,
+        aspect_ratio: Optional[float] = 1.2,
+    ) -> None:
     """
-    Generate a plot of the properties of the objects in the image from the saved csv.
-    
+    Generate a box plot of the IoU of the binary mask and semantic segmentation images.
+    It will have no title and no legend.
+    x axis is the % Diameter per Pixel.
+
     Args:
-        csv_1 (str) : The input csv file path for graphing.
-        x_axis (str): The column to use for the x-axis.
+        folder_path (str): The path to the folder containing the csv files.
+        dataset_SS (str): The dataset name for the semantic segmentation csv files.
+        dataset_name (str): The dataset name for the instance segmentation csv files.
+        fig_name (str): The name of the figure.
         y_axis (str): The column to use for the y-axis.
-        y_range (Optional[List[float]]): The range of the y-axis.
-        og_px (Optional[int]): The original pixel size of the image.
-        save_dir (Optional[str]): If given graphs are saved in the specified directory.
-        csv_2 (Optional[str]): The input csv file path for graphing - if needed, use this for the semantic segmentation data csv.
+        output_path (str): The path to the folder to save the figures.
+        palette (Optional[list]): The color palette for the plot, list of hexcodes.
+        fig_width (Optional[int]): The width of the figure.
+        aspect_ratio (Optional[float]): The aspect ratio of the plot.
     """
-    # Read the csv file
-    primary_df = pd.read_csv(csv_1)
-    csv_name = csv_1.split(os.sep)[-1].replace('.csv', '')
-    hue: Optional[str] = None
-    
-    # Read the secondary csv file if it exists
-    if csv_2 is None:
-        main_df = primary_df
 
-    else:
-        secondary_df = pd.read_csv(csv_2)
-        
-        hue = 'Hue'
+    # Input variables
+    x_axis = '% Diameter per Pixel'
 
-        # Add column to dataframe labeling the segmentation
-        primary_df ['Hue'] = 'Binary Segmentation'
+    # Get the csv files
+    csv_dict = get_csv_dict(folder_path)
 
-        # Select only the rows with the average of both labels for semantic segmentation
-        secondary_df = secondary_df[(secondary_df['Label'] == 'All')]
-        secondary_df ['Hue'] = 'Semantic Segementation'
+    # Import CSVs
+    csv_BN = pd.read_csv(csv_dict[dataset_SS][1])
+    csv_SS = pd.read_csv(csv_dict[dataset_SS][2])
+    csv_instance_summary = pd.read_csv(csv_dict[dataset_name][-1])
 
-        # Concatenate the two dataframes
-        main_df = pd.concat([primary_df, secondary_df], ignore_index = True)
+    # Calculate mean diameter per sampling and use it to calculate % Diameter per Pixel
+    mean_diam_sampling = mean_obj_diam_dict(dataset_name, csv_dict)
 
-    box_strip_plot_from_df(
-        dataframe=main_df, 
-        x_axis=x_axis, 
-        y_axis=y_axis, 
-        y_range=y_range, 
-        csv_name=csv_name, 
-        hue=hue, 
-        og_px=og_px, 
-        save_dir=save_dir
-    )
+    csv_BN['Mean_diameter_per_sampling_GT'] = csv_BN['Grand_Parent_Folder'].map(mean_diam_sampling)
+    csv_SS['Mean_diameter_per_sampling_GT'] = csv_SS['Grand_Parent_Folder'].map(mean_diam_sampling)
 
-def box_strip_plot_from_df(
-    dataframe: pd.DataFrame, 
-    x_axis: str, 
-    y_axis: str, 
-    csv_name: str, 
-    hue: Optional[str] = None, 
-    y_range: Optional[List[float]] = None, 
-    og_px: Optional[int] = None, 
-    save_dir: Optional[str] = None
-) -> Optional[sns.FacetGrid]:
-    """
-    Generate a plot of the properties of the objects in the image from the saved dataframe.
-    
-    Args:
-        dataframe (pd.DataFrame): The input dataframe containing the properties of the objects in the image.   
-        x_axis (str): The column to use for the x-axis.
-        y_axis (str): The column to use for the y-axis.
-        csv_name (str): The name of the csv file.
-        hue (Optional[str]): The column to use for the hue.
-        og_px (Optional[int]): The original pixel size of the image.
-        save_dir (Optional[str]): If given graphs are saved in the specified directory.
-    
-    Returns:
-        plot (Optional[Figure]): A plot of the properties in the column_to_plot of the objects in the image.
-        or
-        None if the save_dir is given and the plot is saved in the specified directory
-    """
-    # Misc variables
-    # Dictionary identifying sampling multipliers according to folder names
-    folder_sampling_dict = {'upsampling_16': 16, 'upsampling_8': 8, 'upsampling_4': 4,'upsampling_2': 2, 'OG': 1, 'downsampling_2': 1/2, 'downsampling_4': 1/4, 'downsampling_8': 1/8, 'downsampling_16': 1/16}
-    order = None
+    csv_BN['% Diameter per Pixel'] = (100 / csv_BN['Mean_diameter_per_sampling_GT']).round(0).astype(int)
+    csv_SS['% Diameter per Pixel'] = (100 / csv_SS['Mean_diameter_per_sampling_GT']).round(0).astype(int)
 
-    # Color palettes
-    pastel_colors = ['#a1c9f4', '#ffb482', '#8de5a1', '#ff9f9b', '#d0bbff', '#debb9b', '#fab0e4', '#cfcfcf', '#fffea3', '#b9f2f0']
-    saturated_colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+    # Get % diameter per pixel of original image
+    og_percent = csv_SS[csv_SS['Grand_Parent_Folder'] == 'OG']['% Diameter per Pixel'].values[0]
 
-    # Get order of sampling and calculate corresponding pixel size values
-    if x_axis == 'Grand_Parent_Folder':
-        order = order_axis_by_folder(folder_sampling_dict, dataframe)
-    if og_px != None:
-        order_px = [og_px/folder_sampling_dict[folder] for folder in order]
+    csv_SS = csv_SS[csv_SS['GT_Label'] == 'ALL']
 
-    sns.set_context('paper', rc={'font.size': 16, 'axes.titlesize': 16, 'axes.labelsize': 16, 'xtick.labelsize': 12, 'ytick.labelsize': 12, 'legend.fontsize': 12, 'legend.title_fontsize': 12})
+    csv_instance_summary['Source'] = 'Instance Summary'
+    csv_BN['Source'] = 'Binary Mask'
+    csv_SS['Source'] = 'Semantic\nSegmentation'
+
+    dataframe = pd.concat([csv_BN, csv_SS], axis=0, ignore_index=True)
+
+    sns.set_context('talk')
 
     # Arguments for plotting
-    plot_args_box = {'data': dataframe, 
-                'x': x_axis, 
-                'y': y_axis,
-                'kind':'box', 
-                'height': 7, 
-                'aspect' : 1, 
-                'dodge':True , 
-                'order': order, 
-                'linecolor':'black', 
-                'linewidth':1, 
-                'fill':0.5,
-                'whis':1.5 # 1.5 IQR
-                }
-    plot_args_strip = {'data': dataframe, 
-                    'x': x_axis, 
-                    'y': y_axis,
-                    'dodge':True,
-                    'linewidth':1,
-                    'edgecolor':'black',
-                    'legend':False,
-                    'size': 7,
-                    }
+    plot_args_box = {
+        'data': dataframe,
+        'x': x_axis,
+        'y': y_axis,
+        'hue': 'Source',
+        'palette': palette,
+        'kind': 'box',
+        'height': 3.5,
+        'aspect': aspect_ratio,
+        'dodge': True,
+        'linecolor': 'black',
+        'linewidth': 2,
+        'whis': 1.5,  # 1.5 IQR
+        'legend': False,
+    }
 
-    # set plot color palette if hue is given or not
-    if hue != None:
-        plot_args_box['hue'] = hue
-        plot_args_box['palette'] = pastel_colors
-        plot_args_strip['hue'] = hue
-        plot_args_strip['palette'] = saturated_colors
-    else:
-        plot_args_box['color'] = pastel_colors[0]
-        plot_args_strip['color'] = saturated_colors[0]
-    
     # Plot
     plot = sns.catplot(**plot_args_box)
 
-    if x_axis == 'Grand_Parent_Folder':
-        plt.axvline('OG', color='black', dashes=(2, 5))
+    plt.axvline(str(og_percent), color='black', dashes=(2, 5))
+
+    # Set fixed figure width
+    plt.gcf().set_size_inches(fig_width, plt.gcf().get_size_inches()[1])
 
     plt.grid(axis='y', which='major')
-    plt.title(csv_name)
-    #plt.tight_layout()
+    plt.ylim(top=1)
+    plt.xlabel('Pixel Diameter [%]')
 
-    if og_px != None:
-        plt.xticks(order, order_px)
-        plt.xlabel('Pixel size in microns')
-    else:
-        plt.xticks(rotation = 45, ha = 'right')
-        plt.xlabel('Sampling')
+    # Save the plot
+    if output_path is not None:
+        plt.savefig(f'{output_path}/Fig_{fig_name}_{dataset_name}_{y_axis}.svg', bbox_inches='tight', pad_inches=0.2)
+        plt.savefig(f'{output_path}/Fig_{fig_name}_{dataset_name}_{y_axis}.png', bbox_inches='tight', pad_inches=0.2, dpi=300, transparent=True)
+        plt.savefig(f'{output_path}/Fig_{fig_name}_{dataset_name}_{y_axis}.pdf', bbox_inches='tight', pad_inches=0.2, dpi=300, transparent=True)
+
+def generate_semantic_gt_pred_bar_plot(
+        folder_path: str, 
+        dataset_name: str, 
+        fig_name: str,
+        output_path: Optional[str] = None,
+        palette: Optional[list] = ['#7f7f7f', '#ff9f9b'],
+        fig_width: Optional[int] = 5.5,
+        aspect_ratio: Optional[Union[int, float]] = 1.5,
+        folder_sampling_dict: Optional[Dict[str, float]] = {'upsampling_16': 16, 'upsampling_8': 8, 'upsampling_4': 4,'upsampling_2': 2, 'OG': 1, 'downsampling_2': 1/2, 'downsampling_4': 1/4, 'downsampling_8': 1/8, 'downsampling_16': 1/16}
+    ) -> None:
+    """
+    Generate a bar plot comparing the estimated median diameter of the ground truth and the prediction for a dataset.
+    x axis is the % Diameter per Pixel and y axis is the mean median diameter of the objects per FOV.
+
+    Args:
+        folder_path (str): The path to the folder containing the csv files.
+        dataset_name (str): The dataset name for the instance segmentation csv files.
+        fig_name (str): The name of the figure.
+        output_path (str): The path to the folder to save the figures.
+        palette (Optional[list]): The color palette for the plot, list of hexcodes.
+        fig_width (Optional[int]): The width of the figure.
+        aspect_ratio (Optional[float]): The aspect ratio of the plot.
+        folder_sampling_dict (Optional[Dict[str, float]]): The dictionary identifying sampling multipliers according to folder
+    """
+
+    # Input variables
+    x_axis = '% Diameter per Pixel'
+    y_axis = 'Diameter'
+
+    # Get the csv files
+    csv_dict = get_csv_dict(folder_path)
+
+    # Import CSVs
+    csv_instance_summary = pd.read_csv(csv_dict[dataset_name][-1])
+
+    # Calculate mean diameter per sampling and use it to calculate % Diameter per Pixel
+    mean_diam_sampling = mean_obj_diam_dict(dataset_name, csv_dict)
+
+    csv_instance_summary['Mean_diameter_per_sampling_GT'] = csv_instance_summary['Grand_Parent_Folder'].map(mean_diam_sampling)
+
+    csv_instance_summary['% Diameter per Pixel'] = (100 / csv_instance_summary['Mean_diameter_per_sampling_GT']).round(0).astype(int)
+
+    # Get % diameter per pixel of original image
+    og_percent = csv_instance_summary[csv_instance_summary['Grand_Parent_Folder'] == 'OG']['% Diameter per Pixel'].values[0]
+
+    # Normalize GT and Prediction median diameter from sampling
+    csv_instance_summary['GT_diameter_median_norm'] = csv_instance_summary['GT_diameter_median']/csv_instance_summary['Grand_Parent_Folder'].map(folder_sampling_dict)
+    csv_instance_summary['Prediction_diameter_median_norm'] = csv_instance_summary['pred_diameter_median']/csv_instance_summary['Grand_Parent_Folder'].map(folder_sampling_dict)
+
+    # Create a dataframe for the plot
+    gt_df = csv_instance_summary[['GT_diameter_median_norm', '% Diameter per Pixel']].rename(columns={'GT_diameter_median_norm': y_axis})
+    gt_df['Source\nSegmentation'] = 'Ground Truth'
+    pred_df = csv_instance_summary[['Prediction_diameter_median_norm', '% Diameter per Pixel']].rename(columns={'Prediction_diameter_median_norm': y_axis})
+    pred_df['Source\nSegmentation'] = 'Prediction'
+
+    dataframe = pd.concat([gt_df, pred_df], axis=0, ignore_index=True)
+
+    sns.set_context('talk')
+
+    # Arguments for plotting
+    plot_args_box = {
+        'data': dataframe,
+        'x': x_axis,
+        'y': y_axis,
+        'hue': 'Source\nSegmentation',
+        'palette': palette,
+        'kind': 'bar',
+        'height': 3.5,
+        'aspect': aspect_ratio,
+        'dodge': True,
+        'linewidth': 2,
+        'errorbar': ('pi', 95),
+        'capsize' : 0.2,
+        'err_kws':{"color": 'black', "linewidth": 1},
+        'edgecolor': 'black',
+        'zorder': 2,
+        'legend': False,
+    }
+
+    # Plot
+    plot = sns.catplot(**plot_args_box)
+
+    plt.axvline(str(og_percent), color='black', dashes=(2, 5))
+
+    # Set fixed figure width
+    plt.gcf().set_size_inches(fig_width, plt.gcf().get_size_inches()[1])
+
+    # Force y-axis to round to the next major grid point
+    max_y_value = dataframe[y_axis].max()
+    rounded_max_y = math.ceil(max_y_value / 10.0) * 10
+    plt.ylim(top=rounded_max_y)
+
+    plt.grid(axis='y', which='major')
+    plt.xlabel('Pixel Diameter [%]')
+
+    # Save the plot
+    if output_path is not None:
+        plt.savefig(f'{output_path}/Fig_{fig_name}_{dataset_name}_GT_pred_{y_axis}.svg', bbox_inches='tight', pad_inches=0.2)
+        plt.savefig(f'{output_path}/Fig_{fig_name}_{dataset_name}_GT_pred_{y_axis}.png', bbox_inches='tight', pad_inches=0.2, dpi=300, transparent=True)
+        plt.savefig(f'{output_path}/Fig_{fig_name}_{dataset_name}_GT_pred_{y_axis}.pdf', bbox_inches='tight', pad_inches=0.2, dpi=300, transparent=True)
+
+def generate_instance_box_plot(
+        folder_path: str, 
+        dataset_name: str, 
+        fig_name: str,
+        y_axis: str,
+        subset_filenames_to_exclude: Optional[List[str]] = None,
+        output_path: Optional[str] = None,
+        color: Optional[str] = '#1f77b4',
+        fig_width: Optional[Union[int, float]] = 8,
+        aspect_ratio: Optional[Union[int, float]] = 2,
+        is_round_obj: Optional[bool] = True,
+    ) -> None:
+    """
+    Generate a box plot of the instance segmentation images.
+    It will have no title and no legend.
+    x axis is the % Diameter per Pixel.
+
+    Args:
+        folder_path (str): The path to the folder containing the csv files.
+        dataset_name (str): The dataset name for the instance segmentation csv files.
+        fig_name (str): The name of the figure.
+        y_axis (str): The column to use for the y-axis.
+        subset_filenames_to_exclude (Optional[list]): The list of filenames to exclude from the plot.
+        output_path (Optional[str]): The path to the folder to save the figures.
+        color (Optional[list]): The color palette for the plot, list of hexcodes.
+        fig_width (Optional[int]): The width of the figure.
+        aspect_ratio (Optional[float]): The aspect ratio of the plot.
+        folder_sampling_dict (Optional[Dict[str, float]]): The dictionary identifying sampling multipliers according to folder.
+
+    """
+    # Input variables
+    x_axis = '% Diameter per Pixel'
+
+    # Get the csv files
+    csv_dict = get_csv_dict(folder_path)
+
+    # Import CSVs
+    csv_instance_summary = pd.read_csv(csv_dict[dataset_name][-1])
+
+    # Calculate mean diameter per sampling and use it to calculate % Diameter per Pixel
+    mean_diam_sampling = mean_obj_diam_dict(dataset_name, csv_dict, is_round_obj)
+
+    # Assign the mean diameter per sampling to the dataframe based on sampling
+    csv_instance_summary['Mean_diameter_per_sampling_GT'] = csv_instance_summary['Grand_Parent_Folder'].map(mean_diam_sampling)
+
+    # Calculate % diameter per pixel
+    csv_instance_summary['% Diameter per Pixel'] = (100/csv_instance_summary['Mean_diameter_per_sampling_GT']).round(1)
+
+    # If a subset is given, filter the dataframe
+    if subset_filenames_to_exclude is not None:
+        if any(file in csv_instance_summary['File_name'].unique() for file in subset_filenames_to_exclude):
+            csv_instance_summary = csv_instance_summary[~csv_instance_summary['File_name'].isin(subset_filenames_to_exclude)]
+
+    # Get % diameter per pixel of original image
+    og_percent = csv_instance_summary[csv_instance_summary['Grand_Parent_Folder']=='OG']['% Diameter per Pixel'].values[0]
+
+    sns.set_context('talk', rc={'font.size': 25, 'axes.titlesize': 22, 'axes.labelsize': 25, 'xtick.labelsize': 20, 'ytick.labelsize': 20, 'legend.fontsize': 20, 'legend.title_fontsize': 20})
+
+    # Arguments for plotting
+    plot_args_box = {'data': csv_instance_summary, 
+                'x': x_axis, 
+                'y': y_axis,
+                'color': color,  # Adjusted color palette
+                'kind':'box', 
+                'height': 3.5, 
+                'aspect' : aspect_ratio, 
+                'dodge':True , 
+                'linecolor':'black', 
+                'linewidth':2, 
+                'whis':1.5 # 1.5 IQR
+                }
+
+    # Plot
+    plot = sns.catplot(**plot_args_box)
+
+    plt.axvline(str(og_percent), color='black', dashes=(2, 5))
+
+    # Set fixed figure width
+    plt.gcf().set_size_inches(fig_width, plt.gcf().get_size_inches()[1])
+
+    plt.grid(axis='y', which='major')
+    plt.ylim(top=1)
+    plt.xlabel('Pixel Diameter [%]')
+
+    # Save the plot
+    if output_path is not None:
+        plt.savefig(f'{output_path}/Fig_{fig_name}_{dataset_name}_{y_axis}.svg', bbox_inches='tight', pad_inches=0.2)
+        plt.savefig(f'{output_path}/Fig_{fig_name}_{dataset_name}_{y_axis}.png', bbox_inches='tight', pad_inches=0.2, dpi=300, transparent=True)
+        plt.savefig(f'{output_path}/Fig_{fig_name}_{dataset_name}_{y_axis}.pdf', bbox_inches='tight', pad_inches=0.2, dpi=300, transparent=True)
+
+def generate_instance_gt_pred_bar_plot(
+        folder_path: str,
+        dataset_name: str,
+        fig_name: str,
+        subset_filenames_to_exclude: Optional[List[str]] = None,
+        output_path: Optional[str] = None,
+        palette: Optional[List[str]] = ['#7f7f7f', '#ff9f9b'],
+        fig_width: Optional[Union[int, float]] = 8,
+        aspect_ratio: Optional[Union[int, float]] = 2,
+        is_round_obj: Optional[bool] = True,
+        folder_sampling_dict: Optional[Dict[str, float]] = {'upsampling_16': 16, 'upsampling_8': 8, 'upsampling_4': 4,'upsampling_2': 2, 'OG': 1, 'downsampling_2': 1/2, 'downsampling_4': 1/4, 'downsampling_8': 1/8, 'downsampling_16': 1/16}
+    ) -> None:
+    """
+    Generate a bar plot comparing the estimated median diameter of the ground truth and the prediction for a dataset.
+    x axis is the % Diameter per Pixel and y axis is the mean median diameter of the objects per FOV.
+
+    Args:
+        folder_path (str): The path to the folder containing the csv files.
+        dataset_name (str): The dataset name for the instance segmentation csv files.
+        fig_name (str): The name of the figure.
+        y_axis (str): The column to use for the y-axis.
+        subset_filenames_to_exclude (Optional[list]): The list of filenames to exclude from the plot.
+        output_path (Optional[str]): The path to the folder to save the figures.
+        color (Optional[list]): The color palette for the plot, list of hexcodes.
+        fig_width (Optional[int]): The width of the figure.
+        aspect_ratio (Optional[float]): The aspect ratio of the plot.
+        folder_sampling_dict (Optional[Dict[str, float]]): The dictionary identifying sampling multipliers according to folder.
+
     
-    if y_range != None:
-        plt.ylim(y_range)
+    """
+    # Input variables
+    x_axis = '% Diameter per Pixel'
+    y_axis = 'Diameter'
 
-    # Plot with boxplot
-    if save_dir != None:
-        # Save the plot
-        plot.savefig(save_dir + csv_name + '_' + y_axis +'_plot.svg', dpi = 300, bbox_inches = 'tight',transparent=True)
-   
+    # Get the csv files
+    csv_dict = get_csv_dict(folder_path)
 
-    # Plot with stripplot
-    sns.stripplot(**plot_args_strip)
-    box_strip_plot = plot.figure
+    # Calculate mean diameter per sampling and use it to calculate % Diameter per Pixel
+    mean_diam_sampling = mean_obj_diam_dict(dataset_name, csv_dict, is_round_obj)
 
-    if save_dir != None:
-        # Save the plot
-        plot.savefig(save_dir + csv_name + '_' + y_axis + '_plot_strip.svg', dpi = 300, bbox_inches = 'tight',transparent=True)
+    # Import CSVs
+    csv_instance_summary = pd.read_csv(csv_dict[dataset_name][-1])
+    csv_instance_per_obj = pd.read_csv(csv_dict[dataset_name][0])
+
+    # Calculate object diameter from area, assuming objects are circular
+    csv_instance_per_obj['GT_diameter_from_area'] = 2 * np.sqrt(csv_instance_per_obj['GT_area'] / np.pi)
+    csv_instance_per_obj['pred_diameter_from_area'] = 2 * np.sqrt(csv_instance_per_obj['pred_area'] / np.pi)
+
+    # Calculate median values of objecter diameter for summary table
+    csv_instance_summary['Median_GT_diameter_from_area'] = csv_instance_per_obj.groupby(['Grand_Parent_Folder', 'File_name'])['GT_diameter_from_area'].median().reset_index(drop=True)
+    csv_instance_summary['Median_pred_diameter_from_area'] = csv_instance_per_obj.groupby(['Grand_Parent_Folder', 'File_name'])['pred_diameter_from_area'].median().reset_index(drop=True)
+
+    # Assign the mean diameter per sampling to the dataframe based on sampling
+    csv_instance_summary['Mean_diameter_per_sampling_GT'] = csv_instance_summary['Grand_Parent_Folder'].map(mean_diam_sampling)
+
+    # Calculate % diameter per pixel
+    csv_instance_summary['% Diameter per Pixel'] = (100 / csv_instance_summary['Mean_diameter_per_sampling_GT']).round(1)
+
+    # If a subset is given, filter the dataframe
+    if subset_filenames_to_exclude is not None:
+        if any(file in csv_instance_summary['File_name'].unique() for file in subset_filenames_to_exclude):
+            csv_instance_summary = csv_instance_summary[~csv_instance_summary['File_name'].isin(subset_filenames_to_exclude)]
+
+    # Get % diameter per pixel of original image
+    og_percent = csv_instance_summary[csv_instance_summary['Grand_Parent_Folder'] == 'OG']['% Diameter per Pixel'].values[0]
+
+    # Normalize GT and Prediction median diameter from sampling
+    csv_instance_summary['GT_diameter_median_norm'] = csv_instance_summary['Median_GT_diameter_from_area']/csv_instance_summary['Grand_Parent_Folder'].map(folder_sampling_dict)
+    csv_instance_summary['Prediction_diameter_median_norm'] = csv_instance_summary['Median_pred_diameter_from_area']/csv_instance_summary['Grand_Parent_Folder'].map(folder_sampling_dict)
+
+    # Create a dataframe for the plot
+    gt_df = csv_instance_summary[['GT_diameter_median_norm', '% Diameter per Pixel']].rename(columns={'GT_diameter_median_norm': y_axis})
+    gt_df['Source\nSegmentation'] = 'Ground Truth'
+    pred_df = csv_instance_summary[['Prediction_diameter_median_norm', '% Diameter per Pixel']].rename(columns={'Prediction_diameter_median_norm': y_axis})
+    pred_df['Source\nSegmentation'] = 'Prediction'  
+
+    # Concatenate the dataframes
+    dataframe = pd.concat([gt_df, pred_df], axis=0, ignore_index=True)
+
+    # Set the context for the plot
+    sns.set_context('talk', rc={'font.size': 25, 'axes.titlesize': 22, 'axes.labelsize': 25, 'xtick.labelsize': 20, 'ytick.labelsize': 20, 'legend.fontsize': 20, 'legend.title_fontsize': 20})
+
+    # Arguments for plotting
+    plot_args_box = {
+        'data': dataframe,
+        'x': x_axis,
+        'y': y_axis,
+        'hue': 'Source\nSegmentation',
+        'palette': palette,
+        'kind': 'bar',
+        'height': 3.5,
+        'aspect': aspect_ratio,
+        'dodge': True,
+        'linewidth': 2,
+        'errorbar': ('pi', 95),
+        'capsize': 0.2,
+        'err_kws': {"color": 'black', "linewidth": 1},
+        'edgecolor': 'black',
+        'zorder': 2,
+        'legend': False,
+    }
+
+    # Plot
+    plot = sns.catplot(**plot_args_box)
+
+    plt.axvline(str(og_percent), color='black', dashes=(2, 5))
+
+    # Set fixed figure width
+    plt.gcf().set_size_inches(fig_width, plt.gcf().get_size_inches()[1])
+
+    # Force y-axis top to round to the next major grid point
+    max_y_value = dataframe[y_axis].max()
+    rounded_max_y = math.ceil(max_y_value / 10.0) * 10
+    plt.ylim(top=rounded_max_y)
+
+    # Force y-axis bottom to round to the next major grid point
+    min_y_value = dataframe[y_axis].min()
+    rounded_min_y = math.floor(min_y_value / 10.0) * 10
+    plt.ylim(bottom=rounded_min_y)
+
+    plt.grid(axis='y', which='major')
+    plt.xlabel('Pixel Diameter [%]')
+
+    # Save the plot
+    if output_path is not None:
+        plt.savefig(f'{output_path}/Fig_{fig_name}_{dataset_name}_GT_pred_{y_axis}.svg', bbox_inches='tight', pad_inches=0.2)
+        plt.savefig(f'{output_path}/Fig_{fig_name}_{dataset_name}_GT_pred_{y_axis}.png', bbox_inches='tight', pad_inches=0.2, dpi=300, transparent=True)
+        plt.savefig(f'{output_path}/Fig_{fig_name}_{dataset_name}_GT_pred_{y_axis}.pdf', bbox_inches='tight', pad_inches=0.2, dpi=300, transparent=True)
     
-    return box_strip_plot
+def generate_instance_gt_pred_bar_plot(
+        folder_path: str,
+        dataset_name: str,
+        fig_name: str,
+        subset_filenames_to_exclude: Optional[List[str]] = None,
+        output_path: Optional[str] = None,
+        palette: Optional[List[str]] = ['#7f7f7f', '#ff9f9b'],
+        fig_width: Optional[Union[int, float]] = 8,
+        aspect_ratio: Optional[Union[int, float]] = 2,
+        is_round_obj: Optional[bool] = True,
+        folder_sampling_dict: Optional[Dict[str, float]] = {'upsampling_16': 16, 'upsampling_8': 8, 'upsampling_4': 4,'upsampling_2': 2, 'OG': 1, 'downsampling_2': 1/2, 'downsampling_4': 1/4, 'downsampling_8': 1/8, 'downsampling_16': 1/16}
+    ) -> None:
+    """
+    Generate a bar plot comparing the estimated median diameter of the ground truth and the prediction for a dataset.
+    x axis is the % Diameter per Pixel and y axis is the mean median diameter of the objects per FOV.
+
+    Args:
+        folder_path (str): The path to the folder containing the csv files.
+        dataset_name (str): The dataset name for the instance segmentation csv files.
+        fig_name (str): The name of the figure.
+        y_axis (str): The column to use for the y-axis.
+        subset_filenames_to_exclude (Optional[list]): The list of filenames to exclude from the plot.
+        output_path (Optional[str]): The path to the folder to save the figures.
+        color (Optional[list]): The color palette for the plot, list of hexcodes.
+        fig_width (Optional[int]): The width of the figure.
+        aspect_ratio (Optional[float]): The aspect ratio of the plot.
+        folder_sampling_dict (Optional[Dict[str, float]]): The dictionary identifying sampling multipliers according to folder.
+
+    
+    """
+    # Input variables
+    x_axis = '% Diameter per Pixel'
+    y_axis = 'Diameter'
+
+    # Get the csv files
+    csv_dict = get_csv_dict(folder_path)
+
+    # Calculate mean diameter per sampling and use it to calculate % Diameter per Pixel
+    mean_diam_sampling = mean_obj_diam_dict(dataset_name, csv_dict, is_round_obj)
+
+    # Import CSVs
+    csv_instance_summary = pd.read_csv(csv_dict[dataset_name][-1])
+    csv_instance_per_obj = pd.read_csv(csv_dict[dataset_name][0])
+
+    # Calculate object diameter from area, assuming objects are circular
+    csv_instance_per_obj['GT_diameter_from_area'] = 2 * np.sqrt(csv_instance_per_obj['GT_area'] / np.pi)
+    csv_instance_per_obj['pred_diameter_from_area'] = 2 * np.sqrt(csv_instance_per_obj['pred_area'] / np.pi)
+
+    # Calculate median values of objecter diameter for summary table
+    csv_instance_summary['Median_GT_diameter_from_area'] = csv_instance_per_obj.groupby(['Grand_Parent_Folder', 'File_name'])['GT_diameter_from_area'].median().reset_index(drop=True)
+    csv_instance_summary['Median_pred_diameter_from_area'] = csv_instance_per_obj.groupby(['Grand_Parent_Folder', 'File_name'])['pred_diameter_from_area'].median().reset_index(drop=True)
+
+    # Assign the mean diameter per sampling to the dataframe based on sampling
+    csv_instance_summary['Mean_diameter_per_sampling_GT'] = csv_instance_summary['Grand_Parent_Folder'].map(mean_diam_sampling)
+
+    # Calculate % diameter per pixel
+    csv_instance_summary['% Diameter per Pixel'] = (100 / csv_instance_summary['Mean_diameter_per_sampling_GT']).round(1)
+
+    # If a subset is given, filter the dataframe
+    if subset_filenames_to_exclude is not None:
+        if any(file in csv_instance_summary['File_name'].unique() for file in subset_filenames_to_exclude):
+            csv_instance_summary = csv_instance_summary[~csv_instance_summary['File_name'].isin(subset_filenames_to_exclude)]
+
+    # Get % diameter per pixel of original image
+    og_percent = csv_instance_summary[csv_instance_summary['Grand_Parent_Folder'] == 'OG']['% Diameter per Pixel'].values[0]
+
+    # Normalize GT and Prediction median diameter from sampling
+    csv_instance_summary['GT_diameter_median_norm'] = csv_instance_summary['Median_GT_diameter_from_area']/csv_instance_summary['Grand_Parent_Folder'].map(folder_sampling_dict)
+    csv_instance_summary['Prediction_diameter_median_norm'] = csv_instance_summary['Median_pred_diameter_from_area']/csv_instance_summary['Grand_Parent_Folder'].map(folder_sampling_dict)
+
+    # Create a dataframe for the plot
+    gt_df = csv_instance_summary[['GT_diameter_median_norm', '% Diameter per Pixel']].rename(columns={'GT_diameter_median_norm': y_axis})
+    gt_df['Source\nSegmentation'] = 'Ground Truth'
+    pred_df = csv_instance_summary[['Prediction_diameter_median_norm', '% Diameter per Pixel']].rename(columns={'Prediction_diameter_median_norm': y_axis})
+    pred_df['Source\nSegmentation'] = 'Prediction'  
+
+    # Concatenate the dataframes
+    dataframe = pd.concat([gt_df, pred_df], axis=0, ignore_index=True)
+
+    # Set the context for the plot
+    sns.set_context('talk', rc={'font.size': 25, 'axes.titlesize': 22, 'axes.labelsize': 25, 'xtick.labelsize': 20, 'ytick.labelsize': 20, 'legend.fontsize': 20, 'legend.title_fontsize': 20})
+
+    # Arguments for plotting
+    plot_args_box = {
+        'data': dataframe,
+        'x': x_axis,
+        'y': y_axis,
+        'hue': 'Source\nSegmentation',
+        'palette': palette,
+        'kind': 'bar',
+        'height': 3.5,
+        'aspect': aspect_ratio,
+        'dodge': True,
+        'linewidth': 2,
+        'errorbar': ('pi', 95),
+        'capsize': 0.2,
+        'err_kws': {"color": 'black', "linewidth": 1},
+        'edgecolor': 'black',
+        'zorder': 2,
+        'legend': False,
+    }
+
+    # Plot
+    plot = sns.catplot(**plot_args_box)
+
+    plt.axvline(str(og_percent), color='black', dashes=(2, 5))
+
+    # Set fixed figure width
+    plt.gcf().set_size_inches(fig_width, plt.gcf().get_size_inches()[1])
+
+    # Force y-axis top to round to the next major grid point
+    max_y_value = dataframe[y_axis].max()
+    rounded_max_y = math.ceil(max_y_value / 10.0) * 10
+    plt.ylim(top=rounded_max_y)
+
+    # Force y-axis bottom to round to the next major grid point
+    min_y_value = dataframe[y_axis].min()
+    rounded_min_y = math.floor(min_y_value / 10.0) * 10
+    plt.ylim(bottom=rounded_min_y)
+
+    plt.grid(axis='y', which='major')
+    plt.xlabel('Pixel Diameter [%]')
+
+    # Save the plot
+    if output_path is not None:
+        plt.savefig(f'{output_path}/Fig_{fig_name}_{dataset_name}_GT_pred_{y_axis}.svg', bbox_inches='tight', pad_inches=0.2)
+        plt.savefig(f'{output_path}/Fig_{fig_name}_{dataset_name}_GT_pred_{y_axis}.png', bbox_inches='tight', pad_inches=0.2, dpi=300, transparent=True)
+        plt.savefig(f'{output_path}/Fig_{fig_name}_{dataset_name}_GT_pred_{y_axis}.pdf', bbox_inches='tight', pad_inches=0.2, dpi=300, transparent=True)
+
+
+def generate_instance_wt_treatment_bar_plot(
+        folder_path: str,
+        dataset_name: str,
+        fig_name: str,
+        subset_filenames_treatment: List[str],
+        output_path: Optional[str] = None,
+        palette: Optional[List[str]] = ['#1f77b4', '#a1c9f4', '#ff7f0e', '#ffb482'],
+        fig_width: Optional[Union[int, float]] = 8,
+        aspect_ratio: Optional[Union[int, float]] = 2.2,
+        is_round_obj: Optional[bool] = True,
+        folder_sampling_dict: Optional[Dict[str, float]] = {'upsampling_16': 16, 'upsampling_8': 8, 'upsampling_4': 4,'upsampling_2': 2, 'OG': 1, 'downsampling_2': 1/2, 'downsampling_4': 1/4, 'downsampling_8': 1/8, 'downsampling_16': 1/16}
+    ) -> None:
+    """
+    Generate a bar plot comparing the estimated median diameter of the ground truth and the prediction for the wt and treatment subsets of a dataset.
+    x axis is the % Diameter per Pixel and y axis is the mean median diameter of the objects per FOV.
+
+    Args:
+        folder_path (str): The path to the folder containing the csv files.
+        dataset_name (str): The dataset name for the instance segmentation csv files.
+        fig_name (str): The name of the figure.
+        y_axis (str): The column to use for the y-axis.
+        subset_filenames_treatment (list): The list of filenames that belong to the wt subset.
+        output_path (Optional[str]): The path to the folder to save the figures.
+        color (Optional[list]): The color palette for the plot, list of hexcodes.
+        fig_width (Optional[int]): The width of the figure.
+        aspect_ratio (Optional[float]): The aspect ratio of the plot.
+        folder_sampling_dict (Optional[Dict[str, float]]): The dictionary identifying sampling multipliers according to folder.
+
+    
+    """
+    # Input variables
+    x_axis = '% Diameter per Pixel'
+    y_axis = 'Diameter'
+
+    # Get the csv files
+    csv_dict = get_csv_dict(folder_path)
+
+    # Calculate mean diameter per sampling and use it to calculate % Diameter per Pixel
+    mean_diam_sampling = mean_obj_diam_dict(dataset_name, csv_dict, is_round_obj)
+
+    # Import CSVs
+    csv_instance_summary = pd.read_csv(csv_dict[dataset_name][-1])
+    csv_instance_per_obj = pd.read_csv(csv_dict[dataset_name][0])
+
+    # ID the treatment CSVs
+    csv_instance_summary['Subset'] = csv_instance_summary['File_name'].map(lambda x: 'Treatment' if x in subset_filenames_treatment else 'WT')
+    csv_instance_per_obj['Subset'] = csv_instance_per_obj['File_name'].map(lambda x: 'Treatment' if x in subset_filenames_treatment else 'WT')
+
+    # Calculate object diameter from area, assuming objects are circular
+    csv_instance_per_obj['GT_diameter_from_area'] = 2 * np.sqrt(csv_instance_per_obj['GT_area'] / np.pi)
+    csv_instance_per_obj['pred_diameter_from_area'] = 2 * np.sqrt(csv_instance_per_obj['pred_area'] / np.pi)
+
+    # Calculate median values of objecter diameter for summary table
+    csv_instance_summary['Median_GT_diameter_from_area'] = csv_instance_per_obj.groupby(['Grand_Parent_Folder', 'File_name'])['GT_diameter_from_area'].median().reset_index(drop=True)
+    csv_instance_summary['Median_pred_diameter_from_area'] = csv_instance_per_obj.groupby(['Grand_Parent_Folder', 'File_name'])['pred_diameter_from_area'].median().reset_index(drop=True)
+
+    # Assign the mean diameter per sampling to the dataframe based on sampling
+    csv_instance_summary['Mean_diameter_per_sampling_GT'] = csv_instance_summary['Grand_Parent_Folder'].map(mean_diam_sampling)
+
+    # Calculate % diameter per pixel
+    csv_instance_summary['% Diameter per Pixel'] = (100 / csv_instance_summary['Mean_diameter_per_sampling_GT']).round(1)
+
+    # Get % diameter per pixel of original image
+    og_percent = csv_instance_summary[csv_instance_summary['Grand_Parent_Folder'] == 'OG']['% Diameter per Pixel'].values[0]
+
+    # Normalize GT and Prediction median diameter from sampling
+    csv_instance_summary['GT_diameter_median_norm'] = csv_instance_summary['Median_GT_diameter_from_area']/csv_instance_summary['Grand_Parent_Folder'].map(folder_sampling_dict)
+    csv_instance_summary['Prediction_diameter_median_norm'] = csv_instance_summary['Median_pred_diameter_from_area']/csv_instance_summary['Grand_Parent_Folder'].map(folder_sampling_dict)
+
+    # Create a dataframe for the plot
+    gt_df = csv_instance_summary[['GT_diameter_median_norm', '% Diameter per Pixel', 'Subset']].rename(columns={'GT_diameter_median_norm': y_axis})
+    gt_df['Source\nSegmentation'] = 'Ground Truth ' + gt_df['Subset']
+    pred_df = csv_instance_summary[['Prediction_diameter_median_norm', '% Diameter per Pixel', 'Subset']].rename(columns={'Prediction_diameter_median_norm': y_axis})
+    pred_df['Source\nSegmentation'] = 'Prediction ' + pred_df['Subset']
+
+    # Concatenate the dataframes
+    dataframe = pd.concat([gt_df, pred_df], axis=0, ignore_index=True)
+
+    # Set the context for the plot
+    sns.set_context('talk', rc={'font.size': 25, 'axes.titlesize': 22, 'axes.labelsize': 25, 'xtick.labelsize': 20, 'ytick.labelsize': 20, 'legend.fontsize': 20, 'legend.title_fontsize': 20})
+
+    # Arguments for plotting
+    plot_args_box = {
+        'data': dataframe,
+        'x': x_axis,
+        'y': y_axis,
+        'hue': 'Source\nSegmentation',
+        'palette': palette,
+        'kind': 'bar',
+        'height': 3.5,
+        'aspect': aspect_ratio,
+        'dodge': True,
+        'linewidth': 2,
+        'errorbar': ('pi', 95),
+        'capsize': 0.2,
+        'err_kws': {"color": 'black', "linewidth": 1},
+        'edgecolor': 'black',
+        'zorder': 2,
+        'hue_order' :['Ground Truth WT', 'Prediction WT', 'Ground Truth Treatment', 'Prediction Treatment'],
+        'legend': False,
+    }
+
+    # Plot
+    plot = sns.catplot(**plot_args_box)
+
+    plt.axvline(str(og_percent), color='black', dashes=(2, 5))
+
+    # Set fixed figure width
+    plt.gcf().set_size_inches(fig_width, plt.gcf().get_size_inches()[1])
+
+    # Force y-axis top to round to the next major grid point
+    max_y_value = dataframe[y_axis].max()
+    rounded_max_y = math.ceil(max_y_value / 5) * 5
+    plt.ylim(top=rounded_max_y)
+
+    # Force y-axis bottom to round to the next major grid point
+    min_y_value = dataframe[y_axis].min()
+    rounded_min_y = math.floor(min_y_value / 10.0) * 10
+    plt.ylim(bottom=rounded_min_y)
+
+    plt.grid(axis='y', which='major')
+    plt.xlabel('Pixel Diameter [%]')
+
+    # Save the plot
+    if output_path is not None:
+        plt.savefig(f'{output_path}/Fig_{fig_name}_{dataset_name}_GT_pred_{y_axis}.svg', bbox_inches='tight', pad_inches=0.2)
+        plt.savefig(f'{output_path}/Fig_{fig_name}_{dataset_name}_GT_pred_{y_axis}.png', bbox_inches='tight', pad_inches=0.2, dpi=300, transparent=True)
+        plt.savefig(f'{output_path}/Fig_{fig_name}_{dataset_name}_GT_pred_{y_axis}.pdf', bbox_inches='tight', pad_inches=0.2, dpi=300, transparent=True)
+
+def generate_throughput_line_plot(
+        folder_path: str,
+        dataset_name_list: list,
+        fig_name: str,
+        metrics_csv_path: str,
+        round_datasets: Optional[list] = [],
+        output_path: Optional[str] = None,
+        palette: Optional[list] = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'],
+        fig_width: Optional[int] = 8,
+    
+    ): 
+    """
+    Generate a line plot comparing the throughput of the different datasets.
+
+    Args:
+        folder_path (str): The path to the folder containing the csv files.
+        dataset_name_list (list): The list of dataset names.
+        fig_name (str): The name of the figure.
+        metrics_csv_path (str): The path to the metrics csv file.
+        round_datasets (Optional[list]): The list of datasets that have round objects.
+        output_path (Optional[str]): The path to the folder to save the figures.
+        palette (Optional[list]): The color palette for the plot, list of hexcodes.
+        fig_width (Optional[int]): The width of the figure.
+
+    Returns:
+
+    """
+    # variables
+    color_count = 0
+    x_axis = '% Diameter per Pixel'
+    y_axis = 'Obj_per_FOV_mean'
+
+    # Get dictionary of CSVs in folder    
+    csv_dict = get_csv_dict(folder_path)
+
+    # Read CSVs
+    for dataset_name in dataset_name_list:
+        if dataset_name in csv_dict.keys():
+            # Load dataset summary csv
+            csv_instance_summary = pd.read_csv(csv_dict[dataset_name][0])
+
+            # Calculate mean diameter per sampling and use it to calculate % Diameter per Pixel
+            if dataset_name in round_datasets:
+                is_round_obj = True
+            else:
+                is_round_obj = False
+
+            mean_diam_sampling = mean_obj_diam_dict(dataset_name, csv_dict, is_round_obj)
+
+            # Assign the mean diameter per sampling to the dataframe based on sampling
+            csv_instance_summary['Mean_diameter_per_sampling_GT'] = csv_instance_summary['Grand_Parent_Folder'].map(mean_diam_sampling)
+
+            # Calculate % diameter per pixel
+            csv_instance_summary['% Diameter per Pixel'] = (100 / csv_instance_summary['Mean_diameter_per_sampling_GT']).round(1)
+
+            # Calculate microscopeFOV from original resolution dataset
+            mic_FOV_area = microscope_FOV_area(metrics_csv_path, dataset_name)
+
+            # Calculate the objects per FOV for each sampling
+            objs_per_FOV_df = obj_per_microscope_FOV(mic_FOV_area, folder_path, dataset_name)
+
+            # Merge the dataframes
+            csv_instance_summary = pd.merge(csv_instance_summary, objs_per_FOV_df, on=['Grand_Parent_Folder', 'File_name'], how='left')
+
+            sns.set_context('talk', rc={'font.size': 25, 'axes.titlesize': 22, 'axes.labelsize': 25, 'xtick.labelsize': 20, 'ytick.labelsize': 20, 'legend.fontsize': 20, 'legend.title_fontsize': 20})
+
+            plot_args_line = {'data': csv_instance_summary,
+                'x': x_axis,
+                'y': y_axis,
+                'color': palette[color_count],
+                'linewidth': 2,
+                'label': dataset_name,
+                'errorbar': ('pi', 95),
+                }
+    
+            sns.lineplot(**plot_args_line)
+
+            color_count += 1
+
+    plt.yscale('log')
+
+    # Place the legend outside the plot
+    plt.legend(bbox_to_anchor=(0,-1), loc='lower left')
+
+    # Set fixed figure width
+    plt.gcf().set_size_inches(fig_width, plt.gcf().get_size_inches()[1])
+
+    plt.ylabel('Throughput [N/\u03C4]')
+    plt.xlabel('Pixel Diameter [%]')
+
+    plt.grid(axis='y', which='major')
+
+    # Save the plot
+    if output_path is not None:
+        plt.savefig(f'{output_path}/Fig_{fig_name}_Troughput_{len(dataset_name_list)}_datasets.svg', bbox_inches='tight', pad_inches=0.2)
+        plt.savefig(f'{output_path}/Fig_{fig_name}_Troughput_{len(dataset_name_list)}_datasets.png', bbox_inches='tight', pad_inches=0.2, dpi=300, transparent=True)
+        plt.savefig(f'{output_path}/Fig_{fig_name}_Troughput_{len(dataset_name_list)}_datasets.pdf', bbox_inches='tight', pad_inches=0.2, dpi=300, transparent=True)
 
 
 ## Get data from PDFs
 
-def get_metrics_from_pdfs(model_main_dir):
+
+def get_metrics_from_pdfs(
+        model_main_dir: str
+    ) -> pd.DataFrame:
+    """
+    Extract the metrics from the training report PDFs in the model directories.
+
+    Args:
+        model_main_dir (str): The path to the main directory containing the model directories.
+
+    Returns:
+        pd.DataFrame: A dataframe containing the metrics extracted from the PDFs.
+        Save a csv file with the extracted metrics in the provided directory.
+    """
 
     # Define variables
     pdf_ends_with = '_training_report.pdf'
@@ -885,19 +1510,23 @@ def get_metrics_from_pdfs(model_main_dir):
 
     # Loop through all models folders 
     for model in model_list:
+        # Skip cache directories
         if model in ['.DS_Store', '__pycache__']:
                 continue
+        
         else:
             model_dir = os.path.join(model_main_dir, model)
 
+            # Skip if not directory
             if not os.path.isdir(model_dir):
                 continue
 
-            #print('Processing model: ', model)
-
+            # Generate theoretical path to pdf
             pdf_path = os.path.join(model_dir, model + pdf_ends_with)
             
+            # Check if pdf exists
             if os.path.exists(pdf_path):
+                # Load pdf and extract text from
                 pdf = pypdf.PdfReader(pdf_path)
                 page = pdf.pages[0].extract_text()
 
@@ -938,6 +1567,7 @@ def get_metrics_from_pdfs(model_main_dir):
                 model_components = model.split('_')
                 notebook.append(model_components[1])
                 
+                # Extract sampling 
                 if model_components[3] == 'mix':
                     sampling.append(model_components[4])
                     sample.append(model_components[2] + '_' + model_components[3])
@@ -948,6 +1578,7 @@ def get_metrics_from_pdfs(model_main_dir):
             else:
                 continue
 
+    # Add lists to dataframe
     pdf_metrics_df['notebook'] = notebook
     pdf_metrics_df['sample'] = sample
     pdf_metrics_df['sampling'] = sampling
@@ -957,8 +1588,10 @@ def get_metrics_from_pdfs(model_main_dir):
     pdf_metrics_df['patch_size'] = patch_size_list
     pdf_metrics_df['training_time'] = training_time_list
 
+    # Sort dataframe
     pdf_metrics_df.sort_values(by=['sample', 'img_dimensions'], ascending=True, ignore_index=True, inplace=True)
 
+    # Save dataframe to csv
     pdf_metrics_df.to_csv(os.path.join(model_main_dir, 'pdf_metrics.csv'))
 
     print('DONE!')
@@ -968,28 +1601,6 @@ def get_metrics_from_pdfs(model_main_dir):
 
 ## Miscellaneous functions
 
-
-def parent_folder_dict(
-        obj_props_df: pd.DataFrame
-    ) -> Dict[str, List[str]]:
-    """
-    Create a dictionary of parent folders and grand parent folders.
-    
-    Args:
-        obj_props_df (pd.DataFrame): A table containing the calculated properties for each region.
-        
-    Returns:
-        parent_folder_dict (Dict[str, List[str]]): A dictionary of parent folders and grand parent folders.
-    """
-    #Create blank dicitionary
-    parent_folder_dict: Dict[str, List[str]] = {}
-
-    # Get the unique folder names from the object properties dataframe
-    for col in obj_props_df.columns.unique():
-        if col.endswith('Folder'):
-            parent_folder_dict[col] = obj_props_df[col].unique().tolist()
-
-    return parent_folder_dict
 
 def pixel_coverage_percent(
         img_array: np.ndarray
@@ -1028,6 +1639,7 @@ def bbox_points_for_crop(
     """
     # Unpack the bounding box coordinates
     x1, y1, x2, y2 = bbox
+
     #Calculate the half the edge length of the box for padding
     x_radius = (x2 - x1 + 2) // 2
     y_radius = (y2 - y1 + 2) // 2
@@ -1036,13 +1648,16 @@ def bbox_points_for_crop(
     # Top Left
     x1 = (x1 - x_radius) if (x1 - x_radius) > 0 else 0  
     y1 = (y1 - y_radius) if (y1 - y_radius) > 0 else 0 
+
     # Bottom Right
     x2 = (x2 + x_radius) if (x2 + x_radius) < xmax else xmax 
     y2 = (y2 + y_radius) if (y2 + y_radius) < ymax else ymax 
 
     return x1, y1, x2, y2
 
-def object_diameter(image_array: np.array):
+def object_diameter(
+        image_array: np.array
+    ) -> Tuple[float, float, float, float]:
 
     """
     Calculate the diameter of the object in the image array.
@@ -1071,7 +1686,10 @@ def object_diameter(image_array: np.array):
 
     return min_diameter, max_diameter, mean_diameter, median_diameter
 
-def pad_br_with_zeroes(gt_img: np.array, pred_img: np.array):
+def pad_br_with_zeroes(
+        gt_img: np.array, 
+        pred_img: np.array
+    ) -> np.array:
     """
     Calculate the padding size between the GT and Prediction images.
     
@@ -1082,68 +1700,65 @@ def pad_br_with_zeroes(gt_img: np.array, pred_img: np.array):
     Returns:
         pad_with_zero: The padding size between the GT and Prediction images.
     """
+    # Pad the Prediction image with zeroes to match the GT image shape
     padded_pred = np.pad(pred_img, ((0, gt_img.shape[0]-pred_img.shape[0]), (0, gt_img.shape[1]-pred_img.shape[1])), 'constant', constant_values=0)
 
     return padded_pred
 
-def order_axis_by_folder(folder_sampling_dict, dataframe):
-    """
-    Create ordered list of the multiplier folders for the x-axis.
-    
-    Args:
-        folder_sampling_dict: A dictionary of grandparent folders and their sampling multipliers. 
-        obj_props_df: A dataframe containing the properties of the objects in the image.
-        
-    """
-    # Loop through all grandparent folders and add them to the order list if they are in the df
-    order = [folder for folder in folder_sampling_dict.keys() if folder in dataframe['Grand_Parent_Folder'].unique()]
-
-    return order
-
-def get_csv_dict(main_directory: str) -> Dict[str, List[str]]:
+def get_csv_dict(
+        main_directory: str,
+        skiped_folders: Optional[List[str]] = ['.DS_Store', '__pycache__']
+    ) -> Dict[str, List[str]]:
     """
     Find all csv files in the latest Results folder of each folder in the input directory.
 
     Args:
         directory (str): The input directory containing the sub folders contating the image files.
-                            directory |----> Dataset_Folder|----> Grandparent_Folder |----> Parent_Folder |----> Files
+                            directory |----> Dataset_folder|----> Grandparent_Folder |----> Parent_Folder |----> Files
+        skiped_folders (Optional[List[str]]): A list of folders to skip when searching for csv files.
+    
+    Returns:
+        csv_dict (Dict[str, List[str]]): A dictionary containing the csv files in the Results folder of each folder in the input directory.
     """
     
     # Initialize a dictionary to store the csv files names
     csv_dict = {}
 
+    # Get the list of directories in the main directory
     directory_list = os.listdir(main_directory)
 
-    for dir in directory_list:
-        if dir in ['.DS_Store', '__pycache__', 'blank', 'main_folder']:
+    for sub_dir in directory_list:
+        if sub_dir in skiped_folders:
             continue
         else:
-            curr_dir = os.path.join(main_directory, dir)
+            curr_dir = os.path.join(main_directory, sub_dir)
 
             # Create the Results folder path for the current directory
-            res_dir = os.path.join(curr_dir, 'Results')
-            base_res_dir = res_dir
+            results_dir = os.path.join(curr_dir, 'Results')
+            base_results_dir = results_dir
             count = 1
 
-            if not os.path.exists(res_dir):
+            if not os.path.exists(results_dir):
                 continue
             
             else:
-                while os.path.exists(res_dir):
-                    prev_res_dir = res_dir
-                    res_dir = base_res_dir + '_' + f"{count:02d}"
+                while os.path.exists(results_dir):
+                    prev_results_dir = results_dir
+                    results_dir = base_results_dir + '_' + f"{count:02d}"
                     count += 1
                 
-                res_dir = prev_res_dir
+                results_dir = prev_results_dir
 
             # Find all csv files in the Results folder in the current directory
-            csv_dict[dir] = [os.path.join(res_dir, f) for f in sorted(os.listdir(res_dir)) if f.endswith('.csv')]
+            csv_dict[sub_dir] = [os.path.join(results_dir, f) for f in sorted(os.listdir(results_dir)) if f.endswith('.csv')]
 
     print('DONE!')
 
     return csv_dict
 
-def compact_time_string(time_str: str) -> str:
+def compact_time_string(
+        time_str: str,
+    ) -> str:
     """
     Convert a string like 'x hour(s) y min(s) z sec(s)' to a HH:MM:SS string.
 
@@ -1162,6 +1777,191 @@ def compact_time_string(time_str: str) -> str:
     
     return str(f'{hours:02.0f}:{minutes:02.0f}:{seconds:02.0f}')
 
+def percentage_variation_metrics(
+        folder_path: str, 
+        dataset_name: str,
+        instance_segmentation: Optional[bool] = False
+    ) -> None:
+    """
+    Function to calculate the percentage variation of the IoU metric between the original image and the other samplings. 
+    
+    Parameters:
+        folder_path (str): Path to the folder containing the analysis folders.
+        dataset_name (str): Name of the dataset instance to be analyzed.
+        instance_segmentation (bool): If True, the dataset is an instance segmentation dataset. Default is False.
+    
+    Returns:
+        None.
+        Save a csv in the instance sub-folder.
+    """
+    # Make new dictionary to store the percentage variation of the IoU metric
+    percent_var_dict = {}
+
+    # Get dictionary of CSVs in folder
+    csv_dict = get_csv_dict(folder_path)
+    
+    # Import CSVs
+    csv_instance_summary = pd.read_csv(csv_dict[dataset_name][-1])
+    
+    # If it is a semantic segmentation dataset
+    if not instance_segmentation: 
+        # Import CSVs
+        csv_BN = pd.read_csv(csv_dict[dataset_name][1])
+        csv_SS = pd.read_csv(csv_dict[dataset_name][2])
+
+        # Filter the csv semantic segmentation dataframe to only include the 'ALL' GT label metrics
+        csv_SS = csv_SS[csv_SS['GT_Label']=='ALL']
+
+        # Calculate median IoU per sampling and use it to calculate % Diameter per Pixel
+        median_IoU_samp_BN = csv_BN.groupby('Grand_Parent_Folder')['IoU'].median().to_dict()
+        median_IoU_samp_SS = csv_SS.groupby('Grand_Parent_Folder')['IoU'].median().to_dict()
+
+        # Calculate the percentage variation of the IoU metric for Binary Mask
+        for key in median_IoU_samp_BN.keys():
+            difference = median_IoU_samp_BN[key] - median_IoU_samp_BN['OG']
+            percent_var_dict['BN OG vs ' + key] = (difference / median_IoU_samp_BN['OG']) * 100    
+
+        # Calculate the percentage variation of the IoU metric for Semantic Segmentation
+        for key in median_IoU_samp_SS.keys():
+            difference = median_IoU_samp_SS[key] - median_IoU_samp_SS['OG']
+            percent_var_dict['SS OG vs ' + key] = (difference / median_IoU_samp_SS['OG']) * 100
+        
+        # Convert dictionary to DataFrame
+        percent_var_df = pd.DataFrame(list(percent_var_dict.items()), columns=['Comparison', 'Percentage Difference'])
+
+    # If it is an instance segmentation dataset 
+    elif instance_segmentation:    
+        # Import CSVs
+        csv_instance_summary = pd.read_csv(csv_dict[dataset_name][-1])
+
+        # Calculate median IoU per sampling and use it to calculate % Diameter per Pixel
+        median_IoU_samp = csv_instance_summary.groupby('Grand_Parent_Folder')['IoU'].median().to_dict()
+
+        # Calculate the percentage variation of the IoU metric for Instance Segmentation
+        for key in median_IoU_samp.keys():
+            difference = median_IoU_samp[key] - median_IoU_samp['OG']
+            percent_var_dict['OG vs ' + key] = ((difference / median_IoU_samp['OG']) * 100)
+        
+        # Convert dictionary to DataFrame
+        percent_var_df = pd.DataFrame(list(percent_var_dict.items()), columns=['Comparison', 'Percentage Difference'])
+
+    # Round the 'Percentage Difference' column to 2 decimal points
+    percent_var_df['Percentage Difference'] = percent_var_df['Percentage Difference'].round(2)
+    
+    # Save DataFrame to CSV
+    percent_var_df.to_csv(folder_path + '/' + dataset_name + '/' + dataset_name + '_percent_var_dict.csv', index=False)
+
+    return print('Percentage variation metrics saved as csv in ' + folder_path + '/' + dataset_name + '/' + dataset_name + '_percent_var_dict.csv')
+
+def microscope_FOV_area(
+        path_metrics_csv: str, 
+        dataset_name: str,
+        dataset_name_match_dict: Optional[dict] = {'Deepbacs_instance': 'deepbacs', 'Saureus': 'saureus', 'Saureus_WT_PC190723': 'saureus_mix', 'Worm_instance': 'worm'}
+    ) -> float:
+    """
+    Function to calculate the area of the microscope FOV.
+
+    Args:
+        path_metrics_csv (str): path to the csv with the pdf metrics.
+        dataset_name (str): dataset instance name.
+        dataset_name_match_dict (Optional[dict]): dictionary to match dataset names to the sample name from the model in the csv.
+
+    Returns:
+        FOV_area (float): area in pixels of the microscope FOV.
+    """
+    # Read CSVs
+    pdf_metrics_csv = pd.read_csv(path_metrics_csv)
+
+    # Filter dataframe for specific dataset and OG sampling
+    pdf_metrics_csv = pdf_metrics_csv[pdf_metrics_csv['sample']==dataset_name_match_dict[dataset_name]]
+    pdf_metrics_csv = pdf_metrics_csv[pdf_metrics_csv['sampling']=='og']
+
+    # Convert string to values and calculate FOV area from Image dimensions
+    pdf_metrics_csv['img_dimensions'] = pdf_metrics_csv['img_dimensions'].apply(ast.literal_eval)
+    pdf_metrics_csv['FOV_area'] = pdf_metrics_csv['img_dimensions'].apply(lambda x: x[0]*x[1])
+
+    return pdf_metrics_csv['FOV_area'].values[0]
+
+def obj_per_microscope_FOV(
+        microscope_FOV: float, 
+        folder_path: str, 
+        dataset_name:str,
+        save_csv: Optional[bool] = False,
+
+    ) -> pd.DataFrame:
+    """
+    Function to calculate the number of objects per microscope FOV.
+
+    Args:
+        path_metrics_csv (str): path to the csv with the metrics.
+        folder_path (str): path to the folder with the csvs.
+        dataset_name (str): dataset instance name.
+        save_csv (bool): whether to save the values in a csv.
+
+    Returns:
+        dataframe with the median and mean number of objects per microscope FOV.
+    """
+    # Empty Dataframe
+    px_per_obj = pd.DataFrame()
+
+    # Get dictionary of CSVs in folder
+    csv_dict = get_csv_dict(folder_path)
+
+    # Read CSVs
+    per_obj_csv = pd.read_csv(csv_dict[dataset_name][0])
+
+    # Calculate median and mean values of GT area per FOV
+    px_per_obj['GT_area_median'] = per_obj_csv.groupby(['Grand_Parent_Folder','File_name'])['GT_area'].median()
+    px_per_obj['GT_area_mean'] = per_obj_csv.groupby(['Grand_Parent_Folder','File_name'])['GT_area'].mean().round(2)
+
+    # Calculate the number of objects per FOV
+    px_per_obj['Obj_per_FOV_median'] = (microscope_FOV/px_per_obj['GT_area_median']).round(0)
+    px_per_obj['Obj_per_FOV_mean'] = (microscope_FOV/px_per_obj['GT_area_mean']).round(0)
+
+    if save_csv == True:
+        # Save DataFrame to CSV in the dataset folder
+        px_per_obj.to_csv(folder_path + '/' + dataset_name + '/' + dataset_name + '_obj_per_FOV.csv')
+
+        print('CSV saved in ' + folder_path + '/' + dataset_name + '/' + dataset_name + '_obj_per_FOV.csv')
+
+    return px_per_obj[['Obj_per_FOV_mean', 'Obj_per_FOV_median']]
+
+def mean_obj_diam_dict(
+        dataset_name: str,
+        csv_dict: Dict[str, List[str]],
+        is_round_obj: bool = False,
+    ) -> Dict[str, float]:
+    """
+    Function to calculate the mean object diameter for each dataset instance.
+
+    Args:
+        csv_dict (dict): dictionary with the csvs.
+        round_obj (bool): Is the object circular? Default is False.
+
+    Returns:
+        mean_obj_diam_dict (dict): dictionary with the mean object diameter for each dataset instance.
+    """
+    # For non-circular objects
+    if is_round_obj == False:
+        # Load csv
+        csv_instance_summary = pd.read_csv(csv_dict[dataset_name][-1])
+
+        # Calculate mean diameter per sampling
+        mean_diam_sampling = csv_instance_summary.groupby('Grand_Parent_Folder')['GT_diameter_median'].mean().to_dict()
+
+    # For circular objects
+    elif is_round_obj == True:
+        # Load csv
+        csv_instance_summary = pd.read_csv(csv_dict[dataset_name][-1])
+        csv_per_obj = pd.read_csv(csv_dict[dataset_name][0])
+
+        # Calculate mean diameter per sampling
+        csv_per_obj['GT_diameter_from_area'] = 2 * np.sqrt(csv_per_obj['GT_area'] / np.pi)
+        csv_instance_summary['Median_GT_diameter_from_area'] = csv_per_obj.groupby(['Grand_Parent_Folder', 'File_name'])['GT_diameter_from_area'].median().reset_index(drop=True)
+        mean_diam_sampling = csv_instance_summary.groupby('Grand_Parent_Folder')['Median_GT_diameter_from_area'].mean().to_dict()
+
+    return mean_diam_sampling
+        
 
 ## Region properties function and sub functions
 
@@ -1178,9 +1978,9 @@ def object_props(
     
     Args:
         directory (str): The input directory containing the image files.
-        properties (Optional[List[str]]): A list of the properties to calculated for each region.
-        spacing (Optional[Tuple[float, float]]): The physical spacing of the image files.
-        folder_sampling_dict (Optional[Dict[str, float]]): A dictionary of grandparent folders and their sampling multipliers.
+        properties (Optional[List[str]]): A list of the properties to calculated for each region. Default is ['label', 'area', 'eccentricity',  'perimeter', 'equivalent_diameter_area', 'axis_major_length', 'axis_minor_length', 'area_filled']
+        spacing (Optional[Tuple[float, float]]): The physical spacing of the image files. Default is None.
+        folder_sampling_dict (Optional[Dict[str, float]]): A dictionary of grandparent folder names and their sampling multipliers. Default is {'upsampling_16': 16, 'upsampling_8': 8, 'upsampling_4': 4,'upsampling_2': 2, 'OG': 1, 'downsampling_2': 1/2, 'downsampling_4': 1/4, 'downsampling_8': 1/8, 'downsampling_16': 1/16}
 
     Returns:
         obj_props_df (pd.DataFrame): A table containing the calculated properties for each region, extraproperties, and including the file name and parent folder, normalized values by sampling for 'area', 'area_filled', 'equivalent_diameter_area', 'perimeter', 'axis_major_length', 'axis_minor_length'.
@@ -1229,12 +2029,13 @@ def region_properties(
     Args:
         label_image: The input file path for region property calculation.
         properties: A list of properties to calculate for each region. Defaults to ['label', 'area', 'eccentricity',  'perimeter', 'equivalent_diameter_area', 'axis_major_length', 'axis_minor_length', 'area_filled']
-        spacing: The physical spacing of the image files.
+        spacing: The physical spacing of the image files. Default is None.
         
     Returns:
         IoU_per_obj_df: A table containing the calculated properties for each region.
     """
     
+    # Calculate the properties of the regions in the input file
     IoU_per_obj_df = ski.measure.regionprops_table(
         label_image, 
         properties=properties, 
@@ -1348,173 +2149,3 @@ def normalize_to_sampling(
             IoU_per_obj_df['norm_' + property] = IoU_per_obj_df[property] / IoU_per_obj_df['sampling_multiplier']
 
     return IoU_per_obj_df
-
-## Deprecated Functions
-
-
-def generate_basic_plot(
-    res_dir: str, 
-    dataframe: pd.DataFrame, 
-    folder_sampling_dict: Dict[str, float], 
-    column_to_plot: str, 
-    kind_of_plot: Literal['split_violin', 'violin', 'box', 'box_no_outliers', 'strip', 'swarm'], 
-    log_scale: bool, 
-    hue: Optional[str] = 'Parent_Folder', 
-    save: bool = True
-) -> Optional[sns.FacetGrid]:
-    """
-    Generate a plot of the properties of the objects in the image.
-    
-    Args:
-        res_dir (str): The directory to save the plot.
-        dataframe (pd.DataFrame): A dataframe containing the properties of the objects in the image.
-        folder_sampling_dict (Dict[str, float]): A dictionary of grandparent folders and their sampling multipliers. 
-        column_to_plot (str): The column to plot on the y-axis.
-        kind_of_plot (Literal['split_violin', 'violin', 'box', 'box_no_outliers', 'strip', 'swarm']): The kind of plot to generate. Use split_violin for a violin plot split by parent folder.
-        log_scale (bool): Whether to use a logarithmic scale for the y-axis.
-        hue (Optional[str]): The column to use for hue. Defaults to 'Parent_Folder'.
-        save (bool): Whether to save the plot or return it. Defaults to True.
-    
-    Returns:
-        Optional[sns.FacetGrid]: A plot of the properties in the column_to_plot of the objects in the image, or None if save is False.
-    """
-    # Re-order and remove unnecessary sampling folder names for x-axis
-    order = order_axis_by_folder(folder_sampling_dict, dataframe)
-
-    # Set seaborn plot theme and style - set the grid, ticks, and edge color
-    sns.set_theme(context = 'talk', style = 'white', rc = {'axes.grid': True, 'xtick.bottom': True,'ytick.left': True, 'axes.edgecolor': 'black'}, palette = 'colorblind')
-
-    # Generate plot, violin type plots have extra arguments
-    if kind_of_plot == 'split_violin':
-        kind_of_plot = 'violin'
-
-        # In this type of violin plot each half of the violin represents a parent folder
-        plot = sns.catplot(data = dataframe, x = 'Grand_Parent_Folder', y = column_to_plot, kind = kind_of_plot, hue = hue,  order = order, log_scale = log_scale, height = 7, aspect = 1.5, split = True, inner = 'quart')
-
-    elif kind_of_plot == 'violin':
-        # In this type of violin plot each parent folder has its own violin plot
-        plot = sns.catplot(data = dataframe, x = 'Grand_Parent_Folder', y = column_to_plot, kind = kind_of_plot, hue = hue,  order = order, log_scale = log_scale, height = 7, aspect = 1.5, inner = 'quart')
-
-    elif kind_of_plot == 'box_no_outliers':
-        kind_of_plot = 'box'
-        
-        # In this type of box plot outliers are not shown
-        plot = sns.catplot(data = dataframe, x = 'Grand_Parent_Folder', y = column_to_plot, kind = kind_of_plot, hue = hue,  order = order, log_scale = log_scale, height = 7, aspect = 1.5, showfliers=False, gap = 0.2)
-
-    elif kind_of_plot in ['strip', 'swarm']:
-        # increases size of dot in plot
-        plot = sns.catplot(data = dataframe, x = 'Grand_Parent_Folder', y = column_to_plot, kind = kind_of_plot, hue = hue,  order = order, log_scale = log_scale, height = 7, aspect = 1.5, s = 200,edgecolor = 'black', linewidth = 2)
-    
-    else:
-        # Generic plot creation for all other types
-        plot = sns.catplot(data = dataframe, x = 'Grand_Parent_Folder', y = column_to_plot, kind = kind_of_plot, hue = hue,  order = order, log_scale = log_scale, height = 7, aspect = 1.5)
-
-    # Customize the plot
-    # Axis titles and Axis labels rotation 
-    plt.xlabel('Sampling')
-    plt.ylabel(column_to_plot.replace('_', ' '))
-    plt.xticks(rotation = 30)
-
-    # Move legend to top left and close plot
-    if hue != None:
-        sns.move_legend(plot, "lower center", bbox_to_anchor = (0.2, 0.83), ncol = 1,title = None, frameon = True)
-    sns.despine(top = False, right = False) 
-
-    if save == True:
-        # Set and create folder to store graphs if it doesn't exist
-        res_graph_dir = os.path.join(res_dir, 'Graphs')
-
-        if not os.path.exists(res_graph_dir):
-            os.mkdir(res_graph_dir)
-
-        # Save plot as svg to allow for easy rescaling
-        plot.savefig(res_graph_dir + os.sep + column_to_plot +'_' + kind_of_plot + '_plot.svg', dpi = 300, bbox_inches = 'tight')
-
-    else:
-        return plot
-    
-
-def prediction_statistics(parent_folder_dict, directory):
-    """
-    Per image IoU and f1 score statistics.
-    
-    Args:
-        parent_folder_dict: A dictionary with the listof parent folders and grand parent folders.
-        
-    Returns:
-        pred_stats_df: A dataframe containing per object statistics.
-    """
-    if len(parent_folder_dict.keys()) > 2:
-        return print("Error: More than two parent folders found.")
-    
-    # Create a dataframe to store the results
-    pred_stats_df = pd.DataFrame([])
-    GP_dict = parent_folder_dict['Grand_Parent_Folder']
-
-    for GP_folder in sorted(GP_dict):
-        # Create the path variable to the GT and Prediction folders
-        GT_path = os.path.join(directory, GP_folder, 'GT')
-        pred_path = os.path.join(directory, GP_folder, 'Prediction')
-
-        # Get the list of GT and Prediction .tif files
-        GT_file_list = [file for file in os.listdir(GT_path) if file.endswith('.tif')]
-        pred_file_list = [file for file in os.listdir(pred_path) if file.endswith('.tif')]
-
-        # Get the list of the paired files (both GT and Prediction .tif files)
-        paired_files = list(set(GT_file_list) & set(pred_file_list))
-
-        for file in paired_files:
-            GT_img = ski.io.imread(os.path.join(GT_path, file))
-            pred_img = ski.io.imread(os.path.join(pred_path, file))
-
-            if GT_img.shape > pred_img.shape:
-                print(f'{file} from {GP_folder} has shape {GT_img.shape} in GT and {pred_img.shape} in Prediction. Padded Prediction to GT shape.')
-                pred_img = pad_br_with_zeroes(GT_img, pred_img)
-
-            if GT_img.shape == pred_img.shape:
-                
-                if GT_img.max() > 2:
-                    GT_img_bin = GT_img
-                    GT_img_bin[GT_img_bin > 0] = 1
-                    pred_img_bin = pred_img
-                    pred_img_bin[pred_img_bin > 0] = 1
-                
-                    IoU = skl.jaccard_score(GT_img_bin, pred_img_bin, average='micro')
-
-                    f1_score = skl.f1_score(GT_img_bin, pred_img_bin, average='micro')
-
-                    # Add the results to the dataframe
-
-                    pred_stats_df = pd.concat([pred_stats_df, pd.DataFrame([{'Grand_Parent_Folder': GP_folder, 'File_name': file, 'IoU': IoU, 'f1_score': f1_score}])], ignore_index=True)
-
-                else:
-                    for label in range(1, GT_img.max() + 1):
-                        GT_img_bin = GT_img.copy()
-                        GT_img_bin[GT_img_bin != label] = 0
-                        GT_img_bin[GT_img_bin == label] = 1
-                        pred_img_bin = pred_img.copy()
-                        pred_img_bin[pred_img_bin != label] = 0
-                        pred_img_bin[pred_img_bin == label] = 1
-
-                        IoU = skl.jaccard_score(GT_img_bin, pred_img_bin, average='micro')
-
-                        f1_score = skl.f1_score(GT_img_bin, pred_img_bin, average='micro')
-
-                        if label == 1:
-                            iou_1 = IoU
-                            f1_1 = f1_score
-
-                        # Add the results to the dataframe
-
-                        pred_stats_df = pd.concat([pred_stats_df, pd.DataFrame([{'Grand_Parent_Folder': GP_folder, 'File_name': file, 'Label': label, 'IoU': IoU, 'f1_score': f1_score}])], ignore_index=True)
-
-                        if label == 2:
-                            IoU = (iou_1 + IoU) /2
-                            f1_score = (f1_1 + f1_score) /2
-
-                            pred_stats_df = pd.concat([pred_stats_df, pd.DataFrame([{'Grand_Parent_Folder': GP_folder, 'File_name': file, 'Label': 'All', 'IoU': IoU, 'f1_score': f1_score}])], ignore_index=True)
-
-            else:
-                print(f'Error: {file} has different shape in GT and Prediction folders.')
-
-    return pred_stats_df
