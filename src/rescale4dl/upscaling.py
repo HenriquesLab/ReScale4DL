@@ -57,7 +57,7 @@ def upsample_labels(labels: np.array, magnification: int, keep_dims: bool = Fals
                 nn_upscale.run(
                     labels.astype(np.float32), 0, 0, magnification, magnification, 0
                 ),
-                dtype=np.float32,
+                dtype=np.uint16,
             )
         )
     else:
@@ -67,6 +67,6 @@ def upsample_labels(labels: np.array, magnification: int, keep_dims: bool = Fals
                 nn_upscale.run(
                     labels.astype(np.float32), 0, 0, magnification, magnification
                 ),
-                dtype=np.float32,
+                dtype=np.uint16,
             )
         )
