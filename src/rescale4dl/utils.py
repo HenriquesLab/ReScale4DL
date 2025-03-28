@@ -1,4 +1,5 @@
 import numpy as np
+import os
 from functools import lru_cache
 
 
@@ -167,3 +168,34 @@ def find_matching_labels(gt: np.array, pred: np.array):
     # Process scores to resolve conflicts and get final matching labels
     matching_labels = remove_duplicates(scores, pred_labels)
     return matching_labels
+
+
+
+def incremental_dir_creation(parent_dir, incr_dir):
+    """
+    Create a new directory with an incremented name if it already exists.
+    If the directory does not exist, create it.
+    Parameters
+    ----------
+    parent_dir : str
+        Path to the parent directory.
+    incr_dir : str
+        Name of the directory to create.
+    Returns
+    -------
+    str
+        Path to the created directory.
+    """
+    new_dir = os.path.join(parent_dir, incr_dir)
+    if not os.path.exists(new_dir):
+        os.mkdir(new_dir)
+        
+    else:
+        count = 1
+        base_new_dir = new_dir
+        while os.path.exists(new_dir):
+            new_dir = base_new_dir + f"_{count:02d}"
+            count += 1
+        os.mkdir(new_dir)
+
+    return new_dir
