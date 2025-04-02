@@ -3,15 +3,20 @@ import os
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 import skimage as ski  # type: ignore
-from skimage.measure import regionprops_table  # type: ignore
-from skimage.segmentation import relabel_sequential  # type: ignore
-from scipy import ndimage  # type: ignore
 from time import perf_counter, strftime, gmtime
+from skimage.measure._regionprops_utils import perimeter  # type: ignore
 
-from ..utils import incremental_dir_creation
+from typing import List, Tuple, Dict, Optional
+
+from .properties import pixel_coverage_percent, object_diameter
+from ..utils import incremental_dir_creation, pad_with_zeroes, find_matching_labels
 
 
-def main_function(main_dir, sampling_dir_modifier_dict, metrics):
+def main_function(
+    main_dir: str,
+    sampling_dir_modifier_dict: Dict[str, float],
+    extra_metrics_func_list: Optional[List[callable]] = None,
+):
     """
     Main function to iterate over datasets and process them.
 
@@ -21,8 +26,8 @@ def main_function(main_dir, sampling_dir_modifier_dict, metrics):
         Path to the main directory containing dataset folders.
     sampling_dir_modifier_dict : dict
         Dictionary mapping sampling folder names to their modifiers.
-    metrics : list of str
-        List of metrics to calculate.
+    extra_metrics_func_list : Optional[list of metrics function names]
+        List of metrics function names to calculate.
 
     Returns
     -------
@@ -39,7 +44,7 @@ def main_function(main_dir, sampling_dir_modifier_dict, metrics):
         begin_time = perf_counter()
 
         # Call per_dataset function
-        per_dataset(dataset_dir, sampling_dir_modifier_dict, metrics)
+        per_dataset(dataset_dir, sampling_dir_modifier_dict, extra_metrics_func_list)
 
         end_time = perf_counter()
         elapsed_time = end_time - begin_time
@@ -48,18 +53,22 @@ def main_function(main_dir, sampling_dir_modifier_dict, metrics):
         print("--------------------------------------------------")
 
 
-def per_dataset(dataset_dir, sampling_dir_modifier_dict, metrics):
+def per_dataset(
+    dataset_dir: str,
+    sampling_dir_modifier_dict: Dict[str, float],
+    extra_metrics_func_list: Optional[List[callable]] = None,
+):
     """
     Process each dataset folder.
 
     Parameters
     ----------
     dataset_dir : str
-        Path to the main directory containing dataset folders.
+        Path to the dataset folder.
     sampling_dir_modifier_dict : dict
         Dictionary mapping sampling folder names to their modifiers.
-    metrics : list of str
-        List of metrics to calculate.
+    extra_metrics_func_list : Optional[list of metrics function names]
+        List of metrics function names to calculate.
 
     Returns
     -------
@@ -92,7 +101,7 @@ def per_dataset(dataset_dir, sampling_dir_modifier_dict, metrics):
         per_sampling_df = per_sampling(
             os.path.join(dataset_dir, sampling_dir),
             sampling_dir_modifier_dict[sampling_dir],
-            metrics,
+            extra_metrics_func_list,
         )
 
         # Check if per_sampling_df is not empty
@@ -118,7 +127,7 @@ def per_dataset(dataset_dir, sampling_dir_modifier_dict, metrics):
     dataset_df.to_csv(dataset_results_csv, index=False)
 
     # Calculate summary dataframe per file within the dataset
-    df_headers = dataset_df.columns.tolist()
+    """df_headers = dataset_df.columns.tolist()
     summary_df = (
         dataset_df.groupby("file_name")
         .agg(
@@ -137,32 +146,39 @@ def per_dataset(dataset_dir, sampling_dir_modifier_dict, metrics):
         result_dir, f"{os.path.basename(dataset_dir)}_summary.csv"
     )
     summary_df.to_csv(summary_csv, index=False)
+    """
 
 
-def per_sampling(sampling_dir, sampling_modifier, metrics):
+def per_sampling(
+    sampling_dir: str,
+    sampling_modifier: float,
+    extra_metrics_func_list: Optional[List[callable]] = None,
+) -> pd.DataFrame:
     """
     Process each sampling folder.
 
     Parameters
     ----------
     sampling_dir : str
-        Path to the main directory containing dataset folders.
-    sampling_dir_modifier_dict : dict
-        Dictionary mapping sampling folder names to their modifiers.
-    metrics : list of str
-        List of metrics to calculate.
+        Path to the sampling folder.
+    sampling_modifier : float
+        Modifier for the sampling folder.
+    extra_metrics_func_list : Optional[list of metrics function names]
+        List of metrics function names to calculate.
 
     Returns
     -------
-    None
+    pd.DataFrame
+        DataFrame containing results for all images in the sampling folder.
     """
+
     # Check for GT and Prediction folders
     gt_dir = os.path.join(sampling_dir, "GT")
     pred_dir = os.path.join(sampling_dir, "Prediction")
 
     if not os.path.exists(gt_dir) or not os.path.exists(pred_dir):
         print(
-            f"GT or Prediction folder not found in {sampling_dir}. Skipping this sampling folder."
+            f"GT or Prediction folder not found in {os.path.basename(sampling_dir)}. Skipping this sampling folder."
         )
         return pd.DataFrame()
 
@@ -176,22 +192,46 @@ def per_sampling(sampling_dir, sampling_modifier, metrics):
     # Check if any paired files were found
     if not paired_files:
         print(
-            f"No paired GT and Prediction files found in {sampling_dir}. Skipping this sampling folder."
+            f"No paired GT and Prediction files found in {os.path.basename(sampling_dir)}. Skipping this sampling folder."
         )
         return pd.DataFrame()
 
-    # Initialize an empty list to store results
-    results = []
+    # Initialize an empty dataframe to store results
+    results_df = pd.DataFrame()
 
     # Iterate over paired files
     for file_name in paired_files:
-        pass
+        per_image_pair_df = per_image_pair(
+            file_name,
+            sampling_dir,
+            extra_metrics_func_list,
+        )
+
+        # Add per pair df to the results dataframe
+        results_df = (
+            pd.concat([results_df, per_image_pair_df], ignore_index=True)
+            if not per_image_pair_df.empty
+            else results_df
+        )
+
+    # add metadata to results dataframe
+    results_df["dataset_dir"] = os.path.basename(os.path.dirname(sampling_dir))
+    results_df["sampling_dir"] = os.path.basename(sampling_dir)
+    results_df["file_name"] = results_df["file_name"].str.replace(".tif", "")
+    results_df["sampling_modifier"] = sampling_modifier
+
+    # normalize results in reference to sampling modifier dict
+    results_df["normalized_value"] = (
+        results_df["value"] * results_df["sampling_modifier"]
+        if "value" in results_df.columns
+        else results_df["value"]
+    )  # Example normalization
 
     """
     INPUT:
     - sampling_dir - path to the folder containing the GT/Prediction folders
     - sampling modifier dict - dictionary with sampling modifiers for each sampling
-    - metrics - list of metrics to use in analysis
+    - extra_metrics_func_list - list of extra_metrics_func_list to use in analysis
 
 
     Main function to run the code
@@ -214,12 +254,75 @@ def per_sampling(sampling_dir, sampling_modifier, metrics):
     """
 
 
-def per_image_pair():
+def per_image_pair(
+    file_name: str,
+    sampling_dir: str,
+    extra_metrics_func_list: Optional[List[callable]] = None,
+) -> pd.DataFrame:
+    """
+    Process each image pair (GT and Prediction).
+    Parameters
+    ----------
+    file_name : str
+        Name of the image file.
+    sampling_dir : str
+        Path to the sampling folder.
+    extra_metrics_func_list : Optional[list of metrics function names]
+        List of metrics function names to calculate.
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame containing results for the image pair.
+    """
+    # Default metrics to calculate
+    default_metrics_func_list = [
+        pixel_coverage_percent,
+        object_diameter,
+        perimeter,
+        # Add other default metrics functions here
+    ]
+
+    # Use default metrics if extra_metrics_func_list is not provided
+    metrics_func_list = extra_metrics_func_list or default_metrics_func_list
+
+    # Get GT and Prediction file paths
+    gt_file = os.path.join(sampling_dir, "GT", file_name)
+    pred_file = os.path.join(sampling_dir, "Prediction", file_name)
+
+    # Load GT and Prediction images
+    gt_image = ski.io.imread(gt_file)
+    pred_image = ski.io.imread(pred_file)
+
+    # Check if the shape of the GT is bigger than the Prediction are the same and pad Prediction if not
+    if gt_image.shape > pred_image.shape:
+        print(
+            f"{file_name} from {os.path.basename(sampling_dir)} has shape {gt_image.shape} in GT and {pred_image.shape} in Prediction. Padded Prediction to match GT shape."
+        )
+        pred_image = pad_with_zeroes(gt_image, pred_image)
+
+    # If the shapes are still not equal, skip the image pair
+    if gt_image.shape != pred_image.shape:
+        print(
+            f"GT and Prediction images have different shapes: {gt_image.shape} and {pred_image.shape}. Skipping {file_name} image pair."
+        )
+        return pd.DataFrame()
+
+    # Get the paired labels from GT and Prediction with IoU
+    matching_labels_list = find_matching_labels(gt_image, pred_image)
+
+    column_names_list = ["GT_label", "Pred_label", "IoU_score"]
+
+    for matched_lbls in matching_labels_list:
+        gt_lbl, pred_lbl, score = matched_lbls
+
+        # Get the bounding box for the GT label
+
+    return pd.DataFrame()
     """
     INPUT:
     - GT file - path to the GT file
     - Prediction file - path to the Prediction file
-    - metrics - list of metrics to use in analysis
+    - extra_metrics_func_list - list of extra_metrics_func_list to use in analysis
 
     Main function to run the code
     - load paired images
@@ -232,7 +335,7 @@ def per_image_pair():
             - compute_labels_matching_scores
             - find_matching_labels
             - store results in a list/df
-        - get metrics from metrics list
+        - get extra_metrics_func_list from extra_metrics_func_list list
             - run each metric function
             - add results to a list/df
 
@@ -241,7 +344,7 @@ def per_image_pair():
     - object diameter
     - object area
     - optional from region props table
-    - user defined metrics from other sources?
+    - user defined extra_metrics_func_list from other sources?
 
     save results in a dataframe
 

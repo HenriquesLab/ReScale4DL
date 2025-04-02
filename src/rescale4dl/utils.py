@@ -1,6 +1,7 @@
 import numpy as np
 import os
 from functools import lru_cache
+from typing import List, Dict, Optional
 
 
 def check_crop_img(arr, bin_factor):
@@ -162,13 +163,15 @@ def find_matching_labels(gt: np.array, pred: np.array):
     list
         List of tuples (gt_label, pred_label, score).
     """
+    if np.unique(pred).shape[0] == 1:
+        return ((gt_lbl, 0, 0) for gt_lbl in np.unique(gt))
+
     scores = compute_labels_matching_scores(gt, pred)
     pred_labels = np.unique(pred)
 
     # Process scores to resolve conflicts and get final matching labels
     matching_labels = remove_duplicates(scores, pred_labels)
     return matching_labels
-
 
 
 def incremental_dir_creation(parent_dir, incr_dir):
@@ -187,9 +190,10 @@ def incremental_dir_creation(parent_dir, incr_dir):
         Path to the created directory.
     """
     new_dir = os.path.join(parent_dir, incr_dir)
+
     if not os.path.exists(new_dir):
         os.mkdir(new_dir)
-        
+
     else:
         count = 1
         base_new_dir = new_dir
@@ -199,3 +203,84 @@ def incremental_dir_creation(parent_dir, incr_dir):
         os.mkdir(new_dir)
 
     return new_dir
+
+
+def pad_with_zeroes(gt_image: np.array, pred_image: np.array) -> np.array:
+    """
+    Calculate the padding size between the GT and Prediction images.
+
+    Args:
+        gt_image: A numpy array containing the GT image.
+        pred_image: A numpy array containing the Prediction image.
+
+    Returns:
+        pred_image_padded: The prediction image padded with zeroes to match the GT image size.
+    """
+    # Pad the Prediction image with zeroes to match the GT image shape
+    pred_image_padded = np.pad(
+        pred_image,
+        (
+            (0, gt_image.shape[0] - pred_image.shape[0]),
+            (0, gt_image.shape[1] - pred_image.shape[1]),
+        ),
+        "constant",
+        constant_values=0,
+    )
+
+    return pred_image_padded
+
+
+def get_csv_dict(
+    main_directory: str,
+    skiped_folders: Optional[List[str]] = [".DS_Store", "__pycache__"],
+) -> Dict[str, List[str]]:
+    """
+    Find all csv files in the latest Results folder of each folder in the input directory.
+
+    Args:
+        directory (str): The input directory containing the sub folders contating the image files.
+                            directory |----> Dataset_folder|----> Grandparent_Folder |----> Parent_Folder |----> Files
+        skiped_folders (Optional[List[str]]): A list of folders to skip when searching for csv files.
+
+    Returns:
+        csv_dict (Dict[str, List[str]]): A dictionary containing the csv files in the Results folder of each folder in the input directory.
+    """
+
+    # Initialize a dictionary to store the csv files names
+    csv_dict = {}
+
+    # Get the list of directories in the main directory
+    directory_list = os.listdir(main_directory)
+
+    for sub_dir in directory_list:
+        if sub_dir in skiped_folders:
+            continue
+        else:
+            curr_dir = os.path.join(main_directory, sub_dir)
+
+            # Create the Results folder path for the current directory
+            results_dir = os.path.join(curr_dir, "Results")
+            base_results_dir = results_dir
+            count = 1
+
+            if not os.path.exists(results_dir):
+                continue
+
+            else:
+                while os.path.exists(results_dir):
+                    prev_results_dir = results_dir
+                    results_dir = base_results_dir + "_" + f"{count:02d}"
+                    count += 1
+
+                results_dir = prev_results_dir
+
+            # Find all csv files in the Results folder in the current directory
+            csv_dict[sub_dir] = [
+                os.path.join(results_dir, f)
+                for f in sorted(os.listdir(results_dir))
+                if f.endswith(".csv")
+            ]
+
+    print("DONE!")
+
+    return csv_dict
