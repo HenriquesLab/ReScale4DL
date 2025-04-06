@@ -5,7 +5,7 @@
 
 A systematic approach for determining optimal image resolution in deep learning-based microscopy segmentation, balancing accuracy with acquisition/storage costs.
 
-![ReSale4DL logo](https://raw.githubusercontent.com/HenriquesLab/ReScale4DL/main/.github/logo.png) 
+![ReSale4DL logo](https://raw.githubusercontent.com/HenriquesLab/ReScale4DL/refs/heads/main/.github/logo.png) 
 
 ## Key Features
 - **Resolution simulation**: Rescale images and their respective annotations (upsample and downsample)
