@@ -1,2 +1,56 @@
-# Downsampling
-Private repo to keep pre and post processing scripts as well as the notebooks used to train the deep learning models
+# ReScale4DL: Balancing Pixel and Contextual Information for Enhanced Bioimage Segmentation
+
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+A systematic approach for determining optimal image resolution in deep learning-based microscopy segmentation, balancing accuracy with acquisition/storage costs.
+
+![ReSale4DL logo](https://raw.githubusercontent.com/HenriquesLab/ReScale4DL/main/.github/logo.png) 
+
+## Key Features
+- **Resolution simulation**: Rescale images and their respective annotations (upsample and downsample)
+- **Segmentation evaluation**: Compare performance across resolutions using:
+  - Mean Intersection-over-Union (IoU)
+  - Morphological features
+  - Potential throughput
+  - Personalised metrics
+- **Visualization tools**: Generate comparative plots and sample outputs
+
+## Installation
+
+```terminal
+pip install rescale4dl
+```
+
+
+## Usage
+
+### 1. Image Rescaling
+Notebook: `rescale_images.ipynb`
+
+### 2. Segmentation Analysis 
+Notebook: `evaluate_segmentation.ipynb`
+
+
+## Key Parameters
+
+
+## Contributing
+We welcome contributions through:
+- [Issue reporting](https://github.com/HenriquesLab/ReScale4D/issues)
+- [Pull requests](https://github.com/HenriquesLab/ReScale4D/pulls)
+
+## License
+MIT License - See [LICENSE](LICENSE) for details
+
+## Citation
+If using this work in research, please cite:
+
+
+
+
+```terminal
+git clone https://github.com/HenriquesLab/ReScale4DL.git
+cd rescale4dl
+pip install -r requirements.txt`
+```
