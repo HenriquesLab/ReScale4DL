@@ -162,3 +162,5 @@ cython_debug/
 Data/Staph
 .DS_Store
 .gitignore
+Examples/Processed
+Examples/data/Processed
