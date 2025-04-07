@@ -882,6 +882,12 @@ def generate_binary_semantic_box_plot(
     y_axis: str,
     thoughput_plot: Optional[bool] = False,
     metrics_csv_path: Optional[str] = None,
+    dataset_name_match_dict: Optional[dict] = {
+                                            "Deepbacs_instance": "deepbacs",
+                                            "Saureus": "saureus",
+                                            "Saureus_WT_PC190723": "saureus_mix",
+                                            "Worm_instance": "worm",
+                                        },
     y_axis_2: Optional[str] = None,
     output_path: Optional[str] = None,
     color_line: Optional[str] = "#d62728",
@@ -999,7 +1005,7 @@ def generate_binary_semantic_box_plot(
         ax2 = ax1.twinx()
 
         # Calculate microscopeFOV from original resolution dataset
-        mic_FOV_area = microscope_FOV_area(metrics_csv_path, dataset_name)
+        mic_FOV_area = microscope_FOV_area(metrics_csv_path, dataset_name, dataset_name_match_dict)
 
         # Calculate the objects per FOV for each sampling
         objs_per_FOV_df = obj_per_microscope_FOV(
@@ -1206,6 +1212,12 @@ def generate_instance_box_plot(
     thoughput_plot: Optional[bool] = False,
     y_axis_2: Optional[str] = None,
     metrics_csv_path: Optional[str] = None,
+    dataset_name_match_dict: Optional[dict] = {
+                            "Deepbacs_instance": "deepbacs",
+                            "Saureus": "saureus",
+                            "Saureus_WT_PC190723": "saureus_mix",
+                            "Worm_instance": "worm",
+                        },
     color_line: Optional[str] = "#d62728",
     subset_filenames_to_exclude: Optional[List[str]] = None,
     output_path: Optional[str] = None,
@@ -1335,7 +1347,7 @@ def generate_instance_box_plot(
         ax2 = ax1.twinx()
 
         # Calculate microscopeFOV from original resolution dataset
-        mic_FOV_area = microscope_FOV_area(metrics_csv_path, dataset_name)
+        mic_FOV_area = microscope_FOV_area(metrics_csv_path, dataset_name, dataset_name_match_dict)
 
         # Calculate the objects per FOV for each sampling
         objs_per_FOV_df = obj_per_microscope_FOV(
