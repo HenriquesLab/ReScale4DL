@@ -34,13 +34,13 @@ pip install rescale4dl
 ## Usage
 
 ### 1. Image Rescaling
-Notebook: `rescale_images.ipynb`
+Notebook: `Rescale_Images.ipynb`
 
 ### 2. Segmentation Analysis 
-Notebook: `evaluate_segmentation.ipynb`
+Notebook: `Evaluate_Segmentation.ipynb`
 
-
-## Key Parameters
+### 3. Rescale and crop 
+Notebook: `Rescale_Foundation_Models.ipynb`
 
 
 ## Contributing
@@ -53,8 +53,17 @@ MIT License - See [LICENSE](LICENSE) for details
 
 ## Citation
 If using this work in research, please cite:
-
-
+```
+@article{gferreira2025rescale4dl,
+  title={ReScale4DL: Balancing Pixel and Contextual Information for Enhanced Bioimage Segmentation},
+  author={Ferreira, Mariana G. and Saraiva, Bruno M. and Brito, Antonio D. and Pinho, Mariana G. and Henriques, Ricardo and G{\'o}mez-de-Mariscal, Estibaliz },
+  journal={bioRxiv},
+  year={2025},
+  publisher = {Cold Spring Harbor Laboratory},
+  URL = ,
+  eprint = ,
+}
+```
 
 
 
