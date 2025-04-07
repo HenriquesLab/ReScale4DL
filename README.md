@@ -2,7 +2,7 @@
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-<img src="https://raw.githubusercontent.com/HenriquesLab/ReScale4DL/refs/heads/main/.github/logo.png?token=GHSAT0AAAAAAC5PYSXBD65GVB3HMVLFOUDGZ7S7V3A" align="right" width="200"/>
+<img src="https://raw.githubusercontent.com/HenriquesLab/ReScale4DL/refs/heads/main/.github/logo.png?token=GHSAT0AAAAAAC5PYSXAAIOYOGSCBY3YVZZIZ7T2SRQ" align="right" width="200"/>
 
 A systematic approach for determining optimal image resolution in deep learning-based microscopy segmentation, balancing accuracy with acquisition/storage costs.
 
