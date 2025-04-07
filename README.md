@@ -16,6 +16,15 @@ A systematic approach for determining optimal image resolution in deep learning-
 - **Visualization tools**: Generate comparative plots and sample outputs
 
 ## Installation
+Manual installation of this repository (until its release)
+```terminal
+git clone https://github.com/HenriquesLab/ReScale4DL.git
+cd rescale4dl
+conda create -n rescale4dl "python=>3.10"
+conda activate rescale4dl
+pip install -r requirements.txt`
+```
+
 
 ```terminal
 pip install rescale4dl
@@ -48,8 +57,5 @@ If using this work in research, please cite:
 
 
 
-```terminal
-git clone https://github.com/HenriquesLab/ReScale4DL.git
-cd rescale4dl
-pip install -r requirements.txt`
-```
+
+

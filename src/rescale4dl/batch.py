@@ -5,10 +5,12 @@ from typing import List
 from tkinter import filedialog as fd
 from tifffile import imread, imwrite
 
-from .utils import check_crop_img
+from .utils import check_crop_img, crop_with_padding
 from .blurring import gaussian_blur
 from .downscaling import binning_img, binning_label
 from .upscaling import upsample_img, upsample_labels
+from tqdm import tqdm
+
 
 
 def downsample_batch(input_folder_path: str, input_folder_name: str, downsampling_factor: int, keep_dims: bool = False, mode: str = "sum"):
@@ -156,3 +158,52 @@ def process_all_datasets(datasets_path: str, downsampling_factor: List[int], mag
                 gaussians,
                 modes
                 )
+
+# Core Processing Functions
+def rescale_image(image: np.ndarray, factor: int, mode: str) -> np.ndarray:
+    """Rescale image using specified method"""
+    if mode == "down":
+        return binning_img(image, factor, keep_dims=False, mode="mean")
+    elif mode == "up":
+        return upsample_img(image, factor, keep_dims=False)
+    else:
+        raise ValueError(f"Invalid scale mode: {mode}. Use 'up' or 'down'")
+
+
+#  Processing Pipeline
+def rescale_and_crop_image(INPUT_DIR, OUTPUT_DIR, SCALE_FACTOR, SCALE_MODE, TARGET_SHAPE, SAVE_SCALED):
+    # Create output directories
+    os.makedirs(os.path.join(OUTPUT_DIR, "scaled"), exist_ok=True)
+    os.makedirs(os.path.join(OUTPUT_DIR, "final"), exist_ok=True)
+    # Get image list
+    images = [f for f in os.listdir(INPUT_DIR) if f.lower().endswith('.tif')]
+
+    for filename in images:
+        # Load image
+        img_path = os.path.join(INPUT_DIR, filename)
+        image = np.squeeze(imread(img_path))
+
+        # Rescale
+        scaled = rescale_image(image, SCALE_FACTOR, SCALE_MODE)
+
+        # Save intermediate
+        if SAVE_SCALED:
+            imwrite(os.path.join(OUTPUT_DIR, "scaled", f"scaled_{SCALE_MODE}_{SCALE_FACTOR}_{filename}"), scaled)
+
+        # Crop/Pad
+        final_image = crop_with_padding(scaled, TARGET_SHAPE)
+
+        # Save result
+        imwrite(os.path.join(OUTPUT_DIR, "final", f"processed_{SCALE_MODE}_{SCALE_FACTOR}_{filename}"), final_image)
+
+
+def rescale_and_crop(INPUT_DIR, OUTPUT_DIR, SCALE_FACTOR, TARGET_SHAPE, SAVE_SCALED):
+    for s in tqdm(SCALE_FACTOR, desc="Rescaling and cropping"):
+        SCALE_MODE = "down" if s<1 else "up"
+        if s < 1:
+            SCALE_MODE = "down"
+            s = np.floor(1/s)
+        else:
+            SCALE_MODE = "up"
+        print(s)
+        rescale_and_crop_image(INPUT_DIR, OUTPUT_DIR, np.int8(s), SCALE_MODE, TARGET_SHAPE, SAVE_SCALED)

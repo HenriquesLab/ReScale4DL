@@ -284,3 +284,39 @@ def get_csv_dict(
     print("DONE!")
 
     return csv_dict
+
+
+
+
+def crop_with_padding(image: np.ndarray, target_shape: tuple) -> np.ndarray:
+    """Center-crop with padding when needed"""
+    im = np.squeeze(image)
+    output = np.zeros(shape=target_shape, dtype=image.dtype)
+    # Handle vertical and horizontal dimension
+    if im.shape[0] < target_shape[0] and im.shape[1] < target_shape[1]:
+        h = np.floor((target_shape[0] - im.shape[0]) / 2)
+        w = np.floor((target_shape[1] - im.shape[1]) / 2)
+        w = np.uint16(w)
+        h = np.uint16(h)
+        output[h:h + im.shape[0], w:w + im.shape[1]] = im
+    # Handle vertical dimension
+    elif im.shape[0] < target_shape[0]:
+        h = np.floor((target_shape[0] - im.shape[0]) / 2)
+        w = np.floor(im.shape[1] / 2) - np.floor(shape[1] / 2)
+        w = np.uint16(w)
+        h = np.uint16(h)
+        output[h:h + im.shape[0]] = im[:, w:w + target_shape[1]]
+    # Handle horizontal dimension
+    elif im.shape[1] < target_shape[1]:
+        w = np.floor((target_shape[1] - im.shape[1]) / 2)
+        h = np.floor(im.shape[0] / 2) - np.floor(target_shape[0] / 2)
+        w = np.uint16(w)
+        h = np.uint16(h)
+        output[:, w:w + im.shape[1]] = im[h:h + target_shape[0], :]
+    else:
+        w = np.floor(im.shape[1] / 2) - np.floor(target_shape[1] / 2)
+        h = np.floor(im.shape[0] / 2) - np.floor(target_shape[0] / 2)
+        w = np.uint16(w)
+        h = np.uint16(h)
+        output = im[h:h + target_shape[0], w:w + target_shape[1]]
+    return output
