@@ -5,9 +5,9 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "rescale4dl"
 version = "0.1.1"
-description = "My python package package"
+description = "A systematic approach for determining optimal image resolution in deep learning-based microscopy segmentation, balancing accuracy with acquisition/storage costs."
 authors = [
-    { name = "Mariana G Ferreira", email = "mariana.g.ferreira@itqb.unl.pt" },
+    { name = "Mariana G Ferreira", email = " marianagferreira08@gmail.com" },
     { name = "Bruno Saraiva", email = "bruno.msaraiva2@gmail.com" },
     { name = "Ricardo Henriques", email = "ricardo.jv.henriques@gmail.com" },
     { name = "Estibaliz Gómez-de-Mariscal", email = "esgodema@gmail.com" }
