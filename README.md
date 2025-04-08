@@ -1,8 +1,9 @@
 # ReScale4DL: Balancing Pixel and Contextual Information for Enhanced Bioimage Segmentation
 
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.8+](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-<img src="https://raw.githubusercontent.com/HenriquesLab/ReScale4DL/refs/heads/main/.github/logo.png?token=GHSAT0AAAAAAC5PYSXAAIOYOGSCBY3YVZZIZ7T2SRQ" align="right" width="200"/>
+
+<img src="https://raw.githubusercontent.com/HenriquesLab/ReScale4DL/refs/heads/main/.github/logo.png?token=GHSAT0AAAAAAC5PYSXBX34C76FL7KUWDO62Z7VHF5A" align="right" width="150"/>
 
 A systematic approach for determining optimal image resolution in deep learning-based microscopy segmentation, balancing accuracy with acquisition/storage costs.
 
@@ -16,18 +17,22 @@ A systematic approach for determining optimal image resolution in deep learning-
 - **Visualization tools**: Generate comparative plots and sample outputs
 
 ## Installation
-Manual installation of this repository (until its release)
-```terminal
-git clone https://github.com/HenriquesLab/ReScale4DL.git
-cd rescale4dl
-conda create -n rescale4dl "python=>3.10"
-conda activate rescale4dl
-pip install -r requirements.txt`
-```
 
+ReScale4DL is available as a Python package through pip. 
+Activate your conda environment or create one and install it with `pip`:
 
 ```terminal
 pip install rescale4dl
+```
+
+### Manual installation
+Manual installation from using GitHub repository
+```terminal
+git clone https://github.com/HenriquesLab/ReScale4DL.git
+cd rescale4dl
+conda create -n rescale4dl "python<=3.12"
+conda activate rescale4dl
+python -m pip install .
 ```
 
 
