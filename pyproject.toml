@@ -7,7 +7,10 @@ name = "rescale4dl"
 version = "0.1.1"
 description = "My python package package"
 authors = [
-    { name = "Mariana G Ferreira", email = "mariana.g.ferreira@itqb.unl.pt" }
+    { name = "Mariana G Ferreira", email = "mariana.g.ferreira@itqb.unl.pt" },
+    { name = "Bruno Saraiva", email = "bruno.msaraiva2@gmail.com" },
+    { name = "Ricardo Henriques", email = "ricardo.jv.henriques@gmail.com" },
+    { name = "Estibaliz Gómez-de-Mariscal", email = "esgodema@gmail.com" }
 ]
 readme = { file = "README.md", content-type = "text/markdown" }
 license = { text = "MIT" }
