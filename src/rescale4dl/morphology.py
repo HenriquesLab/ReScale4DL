@@ -4,6 +4,7 @@
 import os
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
+from tifffile import imread
 import pypdf  # type: ignore
 import re
 import matplotlib.pyplot as plt  # type: ignore
@@ -110,9 +111,52 @@ def morphology(
                 sampling_dir_list=sampling_dir_list,
             )
 
+            dataset_info(
+                directory=curr_dir,
+                result_dir=curr_dir)
+
     # Print total time taken
     total_time = strftime("%H:%M:%S", gmtime(perf_counter() - begin_time))
     print(f"Total time: {total_time}")
+
+## Basic dataset info
+
+def dataset_info(
+    directory: str,
+    result_dir: str,
+) -> pd.DataFrame:
+    """
+    Extract basic image properties from the data
+    Args:
+        directory (str): Directory with folders of sampling folders with GT and Prediction folder pairs inside.
+        result_dir (str): Directory to save the results.
+
+    Returns:
+        pd.DataFrame: Stores a dataframe
+    """
+    # Loop through the parent folders
+    dir_list = [i for i in os.listdir(directory) if not i.__contains__(".") and i != "Results"]  # Skip .DS_Store, __pycache__, and Results folder
+    dataset_name = os.path.basename(directory)
+    info_pandas = None
+    for scaling_dir in sorted(dir_list):
+        example_im = [i for i in os.listdir((os.path.join(directory, scaling_dir, "GT"))) if i.__contains__(".tif")][0]
+        im = imread(os.path.join(directory, scaling_dir, "GT", example_im))
+        im_shape = tuple(im.shape)
+        aux = pd.DataFrame(
+            {
+                "sample": dataset_name,
+                "sampling": scaling_dir,
+                "img_dimensions": [im_shape],
+            }
+        )
+        if info_pandas is None:
+            info_pandas = aux
+        else:
+            info_pandas = pd.concat([info_pandas, aux], ignore_index=True)
+    info_pandas.to_csv(os.path.join(result_dir, f"{dataset_name}_dataset_info.csv"))
+    return info_pandas
+
+
 
 
 ## Per object Prediction statistics functions
@@ -888,7 +932,8 @@ def generate_binary_semantic_box_plot(
                                             "Saureus_WT_PC190723": "saureus_mix",
                                             "Worm_instance": "worm",
                                         },
-    y_axis_2: Optional[str] = None,
+    original_folder_name: Optional[str] = "og",
+    y_axis_2: Optional[str] = "Obj_per_FOV_mean",
     output_path: Optional[str] = None,
     color_line: Optional[str] = "#d62728",
     palette: Optional[list] = ["#1f77b4", "#ff9f9b"],
@@ -1005,7 +1050,7 @@ def generate_binary_semantic_box_plot(
         ax2 = ax1.twinx()
 
         # Calculate microscopeFOV from original resolution dataset
-        mic_FOV_area = microscope_FOV_area(metrics_csv_path, dataset_name, dataset_name_match_dict)
+        mic_FOV_area = microscope_FOV_area(metrics_csv_path, dataset_name, original_folder_name, dataset_name_match_dict)
 
         # Calculate the objects per FOV for each sampling
         objs_per_FOV_df = obj_per_microscope_FOV(
@@ -1210,7 +1255,7 @@ def generate_instance_box_plot(
     fig_name: str,
     y_axis: str,
     thoughput_plot: Optional[bool] = False,
-    y_axis_2: Optional[str] = None,
+    y_axis_2: Optional[str] = "Obj_per_FOV_mean",
     metrics_csv_path: Optional[str] = None,
     dataset_name_match_dict: Optional[dict] = {
                             "Deepbacs_instance": "deepbacs",
@@ -1218,6 +1263,7 @@ def generate_instance_box_plot(
                             "Saureus_WT_PC190723": "saureus_mix",
                             "Worm_instance": "worm",
                         },
+    original_folder_name: Optional[str] = "og",
     color_line: Optional[str] = "#d62728",
     subset_filenames_to_exclude: Optional[List[str]] = None,
     output_path: Optional[str] = None,
@@ -1347,7 +1393,7 @@ def generate_instance_box_plot(
         ax2 = ax1.twinx()
 
         # Calculate microscopeFOV from original resolution dataset
-        mic_FOV_area = microscope_FOV_area(metrics_csv_path, dataset_name, dataset_name_match_dict)
+        mic_FOV_area = microscope_FOV_area(metrics_csv_path, dataset_name, original_folder_name=original_folder_name,dataset_name_match_dict=dataset_name_match_dict)
 
         # Calculate the objects per FOV for each sampling
         objs_per_FOV_df = obj_per_microscope_FOV(
@@ -2424,6 +2470,7 @@ def percentage_variation_metrics(
 def microscope_FOV_area(
     path_metrics_csv: str,
     dataset_name: str,
+    original_folder_name: Optional[str] = "og",
     dataset_name_match_dict: Optional[dict] = {
         "Deepbacs_instance": "deepbacs",
         "Saureus": "saureus",
@@ -2449,7 +2496,7 @@ def microscope_FOV_area(
     pdf_metrics_csv = pdf_metrics_csv[
         pdf_metrics_csv["sample"] == dataset_name_match_dict[dataset_name]
     ]
-    pdf_metrics_csv = pdf_metrics_csv[pdf_metrics_csv["sampling"] == "og"]
+    pdf_metrics_csv = pdf_metrics_csv[pdf_metrics_csv["sampling"] == original_folder_name]
 
     # Convert string to values and calculate FOV area from Image dimensions
     pdf_metrics_csv["img_dimensions"] = pdf_metrics_csv[
