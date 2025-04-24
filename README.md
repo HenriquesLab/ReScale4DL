@@ -20,14 +20,20 @@ needs while optimising microscopy techniques.
 ## Installation
 
 ReScale4DL is available as a Python package through pip. 
-Activate your conda environment or create one and install it with `pip`:
+Activate your conda environment or create one:
+```terminal
+conda create -n rescale4dl "python<=3.12"
+conda activate rescale4dl
+```
+
+Install ReScale4DL with `pip`:
 
 ```terminal
 pip install rescale4dl
 ```
 
 ### Manual installation
-Manual installation from using GitHub repository
+Manual installation using the GitHub repository
 ```terminal
 git clone https://github.com/HenriquesLab/ReScale4DL.git
 cd rescale4dl
@@ -40,13 +46,13 @@ python -m pip install .
 ## Usage
 
 ### 1. Image Rescaling
-Notebook: `Rescale_Images.ipynb`
+Notebook: [`Rescale_Images.ipynb`](https://github.com/HenriquesLab/ReScale4DL/blob/main/Notebooks/Rescale_Images.ipynb)
 
 ### 2. Segmentation Analysis 
-Notebook: `Evaluate_Segmentation.ipynb`
+Notebook: [`Evaluate_Segmentation.ipynb`](https://github.com/HenriquesLab/ReScale4DL/blob/main/Notebooks/Evaluate_Segmentation.ipynb)
 
 ### 3. Rescale and crop 
-Notebook: `Rescale_Foundation_Models.ipynb`
+Notebook: [`Rescale_Foundation_Models.ipynb`](https://github.com/HenriquesLab/ReScale4DL/blob/main/Notebooks/Rescale_Foundation_Models.ipynb)
 
 
 ## Contributing
@@ -57,17 +63,21 @@ We welcome contributions through:
 ## License
 MIT License - See [LICENSE](LICENSE) for details
 
-## Citation
-If using this work in research, please cite:
+## How to cite this work
+
+Ferreira, M.G., Saraiva, B.M., Brito, A.D., Pinho, M.G., Henriques, R. and Gómez-de-Mariscal, E., *ReScale4DL: Balancing Pixel and Contextual Information for Enhanced Bioimage Segmentation.* bioRxiv, pp.2025-04, (2025) [https://doi.org/10.1101/2025.04.09.647871](https://doi.org/10.1101/2025.04.09.647871)
+
+[![ReScale4DL-preprint](https://raw.githubusercontent.com/HenriquesLab/ReScale4DL/refs/heads/main/.github/rescale4dl-biorxiv.png)]([https://rdcu.be/dIdIw](https://www.biorxiv.org/content/10.1101/2025.04.09.647871v1))
+
 ```
-@article{gferreira2025rescale4dl,
+@article{ferreira2025rescale4dl,
   title={ReScale4DL: Balancing Pixel and Contextual Information for Enhanced Bioimage Segmentation},
-  author={Ferreira, Mariana G. and Saraiva, Bruno M. and Brito, Antonio D. and Pinho, Mariana G. and Henriques, Ricardo and G{\'o}mez-de-Mariscal, Estibaliz },
+  author={Ferreira, Mariana G and Saraiva, Bruno M and Brito, Ant{\'o}nio D and Pinho, Mariana G and Henriques, Ricardo and G{\'o}mez-de-Mariscal, Estibaliz},
   journal={bioRxiv},
+  pages={2025--04},
   year={2025},
-  publisher = {Cold Spring Harbor Laboratory},
-  URL = ,
-  eprint = ,
+  publisher={Cold Spring Harbor Laboratory},
+  URL = https://doi.org/10.1101/2025.04.09.647871
 }
 ```
 
