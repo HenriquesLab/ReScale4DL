@@ -67,7 +67,7 @@ MIT License - See [LICENSE](LICENSE) for details
 
 Ferreira, M.G., Saraiva, B.M., Brito, A.D., Pinho, M.G., Henriques, R. and Gómez-de-Mariscal, E., *ReScale4DL: Balancing Pixel and Contextual Information for Enhanced Bioimage Segmentation.* bioRxiv, pp.2025-04, (2025) [https://doi.org/10.1101/2025.04.09.647871](https://doi.org/10.1101/2025.04.09.647871)
 
-[![ReScale4DL-preprint](https://raw.githubusercontent.com/HenriquesLab/ReScale4DL/refs/heads/main/.github/rescale4dl-biorxiv.png)]([https://rdcu.be/dIdIw](https://www.biorxiv.org/content/10.1101/2025.04.09.647871v1))
+[![ReScale4DL-preprint](https://raw.githubusercontent.com/HenriquesLab/ReScale4DL/refs/heads/main/.github/rescale4dl-biorxiv.png)](https://www.biorxiv.org/content/10.1101/2025.04.09.647871v1)
 
 ```
 @article{ferreira2025rescale4dl,
