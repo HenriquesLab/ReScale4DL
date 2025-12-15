@@ -896,7 +896,7 @@ def object_diameter_3d(
         median_diameter: The median diameter of the object in the volume array.
     """
     # Calculate the object skeleton and Euclidean distance transform
-    obj_skeleton = ski.morphology.skeletonize_3d(volume_array)
+    obj_skeleton = ski.morphology.skeletonize(volume_array)
     obj_edt = ndimage.distance_transform_edt(volume_array)
 
     # Get the EDT values for the object skeleton
