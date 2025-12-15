@@ -902,14 +902,27 @@ def object_diameter_3d(
     # Get the EDT values for the object skeleton
     obj_skeleton_edt = obj_skeleton * obj_edt
 
-    # Calculate min, max, mean, and median radius excluding zero values
-    # of background, multiply by 2 for diameter
-    min_diameter = np.min(obj_skeleton_edt[np.nonzero(obj_skeleton_edt)]) * 2
-    max_diameter = np.max(obj_skeleton_edt[np.nonzero(obj_skeleton_edt)]) * 2
-    mean_diameter = np.mean(obj_skeleton_edt[np.nonzero(obj_skeleton_edt)]) * 2
-    median_diameter = (
-        np.median(obj_skeleton_edt[np.nonzero(obj_skeleton_edt)]) * 2
-    )
+    # Get non-zero skeleton EDT values
+    skeleton_values = obj_skeleton_edt[np.nonzero(obj_skeleton_edt)]
+
+    # Check if skeleton is empty (can happen with very small objects)
+    if len(skeleton_values) == 0:
+        # Fallback: use EDT directly
+        edt_values = obj_edt[np.nonzero(obj_edt)]
+        if len(edt_values) == 0:
+            # Object is empty or single voxel
+            return 0.0, 0.0, 0.0, 0.0
+        min_diameter = np.min(edt_values) * 2
+        max_diameter = np.max(edt_values) * 2
+        mean_diameter = np.mean(edt_values) * 2
+        median_diameter = np.median(edt_values) * 2
+    else:
+        # Calculate min, max, mean, and median radius excluding zero values
+        # of background, multiply by 2 for diameter
+        min_diameter = np.min(skeleton_values) * 2
+        max_diameter = np.max(skeleton_values) * 2
+        mean_diameter = np.mean(skeleton_values) * 2
+        median_diameter = np.median(skeleton_values) * 2
 
     return min_diameter, max_diameter, mean_diameter, median_diameter
 
