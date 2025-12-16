@@ -36,6 +36,9 @@ def morphology_3d(
         "downsampling_8",
         "downsampling_16",
     ],
+    run_per_object_stats: Optional[bool] = True,
+    run_semantic_stats: Optional[bool] = True,
+    run_binary_mask_stats: Optional[bool] = True,
 ) -> None:
     """
     Calculate the properties for each object in each 3D volume in the input
@@ -95,23 +98,26 @@ def morphology_3d(
                 os.mkdir(result_dir)
 
             # Calculate properties
-            per_object_statistics_3d(
-                directory=curr_dir,
-                result_dir=result_dir,
-                sampling_dir_list=sampling_dir_list,
-            )
+            if run_per_object_stats:
+                per_object_statistics_3d(
+                    directory=curr_dir,
+                    result_dir=result_dir,
+                    sampling_dir_list=sampling_dir_list,
+                )
 
-            semantic_statistics_3d(
-                directory=curr_dir,
-                result_dir=result_dir,
-                sampling_dir_list=sampling_dir_list,
-            )
+            if run_semantic_stats:
+                semantic_statistics_3d(
+                    directory=curr_dir,
+                    result_dir=result_dir,
+                    sampling_dir_list=sampling_dir_list,
+                )
 
-            binary_mask_statistics_3d(
-                directory=curr_dir,
-                result_dir=result_dir,
-                sampling_dir_list=sampling_dir_list,
-            )
+            if run_binary_mask_stats:
+                binary_mask_statistics_3d(
+                    directory=curr_dir,
+                    result_dir=result_dir,
+                    sampling_dir_list=sampling_dir_list,
+                )
 
     # Print total time taken
     total_time = strftime("%H:%M:%S", gmtime(perf_counter() - begin_time))
