@@ -197,7 +197,7 @@ def per_object_statistics_3d(
     pred_count_count = []
 
     # Loop through the parent folders
-    for GP_folder in sorted(sampling_dir_list):
+    for GP_folder in sorted(sampling_dir_list, reverse=True):
         # Create the path variable to the GT and Prediction folders
         GT_path = os.path.join(directory, GP_folder, "GT")
         pred_path = os.path.join(directory, GP_folder, "Prediction")
@@ -548,7 +548,7 @@ def semantic_statistics_3d(
     f1_score_list = []
 
     # Loop through the parent folders
-    for GP_folder in sorted(sampling_dir_list):
+    for GP_folder in sorted(sampling_dir_list, reverse=True):
         # Create the path variable to the GT and Prediction folders
         GT_path = os.path.join(directory, GP_folder, "GT")
         pred_path = os.path.join(directory, GP_folder, "Prediction")
@@ -575,6 +575,9 @@ def semantic_statistics_3d(
 
         # Loop through the paired files
         for file in paired_files:
+            print(
+                f"Calculating semantic segmentation statistics for {file} in {GP_folder}"
+            )
             GT_vol = ski.io.imread(os.path.join(GT_path, file))
             pred_vol = ski.io.imread(os.path.join(pred_path, file))
             start_time = perf_counter()
@@ -590,43 +593,56 @@ def semantic_statistics_3d(
 
             # Check if the shape of the GT and Prediction volumes are same
             if GT_vol.shape == pred_vol.shape:
-                # Get unique labels in GT and Prediction
+                # Get unique labels that exist in both GT and Prediction
                 GT_labels = np.unique(GT_vol)
                 pred_labels = np.unique(pred_vol)
 
-                # Calculate IoU and f1 score for each label pair
-                for gt_lbl in GT_labels:
-                    for pred_lbl in pred_labels:
-                        # Create binary masks for current labels
-                        GT_mask = GT_vol == gt_lbl
-                        pred_mask = pred_vol == pred_lbl
+                # Only compute for labels that exist in both
+                # (semantic segmentation assumes matching label values)
+                common_labels = np.intersect1d(GT_labels, pred_labels)
 
-                        # Calculate IoU
-                        intersection = np.logical_and(GT_mask, pred_mask)
-                        union = np.logical_or(GT_mask, pred_mask)
-                        iou_score = np.sum(intersection) / np.sum(union)
+                # Calculate IoU and f1 score for each matching label
+                for lbl in common_labels:
+                    # Create binary masks for current label
+                    GT_mask = GT_vol == lbl
+                    pred_mask = pred_vol == lbl
 
-                        # Calculate F1 score
-                        f1_score = skl.f1_score(
-                            GT_mask.flatten(),
-                            pred_mask.flatten(),
-                            average="micro",
-                        )
+                    # Calculate IoU
+                    intersection = np.sum(GT_mask & pred_mask)
+                    union = np.sum(GT_mask | pred_mask)
+                    iou_score = intersection / union if union > 0 else 0.0
 
-                        # Add to lists
-                        GP_folder_list.append(GP_folder)
-                        file_name_list.append(file)
-                        GT_label_list.append(gt_lbl)
-                        pred_label_list.append(pred_lbl)
-                        IoU_list.append(iou_score)
-                        f1_score_list.append(f1_score)
+                    # Calculate F1 score (faster than sklearn for binary)
+                    tp = intersection
+                    fp = np.sum(pred_mask & ~GT_mask)
+                    fn = np.sum(GT_mask & ~pred_mask)
+                    f1_score = (
+                        (2 * tp) / (2 * tp + fp + fn)
+                        if (2 * tp + fp + fn) > 0
+                        else 0.0
+                    )
+
+                    # Add to lists
+                    GP_folder_list.append(GP_folder)
+                    file_name_list.append(file)
+                    GT_label_list.append(lbl)
+                    pred_label_list.append(lbl)
+                    IoU_list.append(iou_score)
+                    f1_score_list.append(f1_score)
 
                 # Calculate overall statistics (all labels combined)
-                iou_score_all = skl.jaccard_score(
-                    GT_vol.flatten(), pred_vol.flatten(), average="micro"
-                )
+                # Use direct computation instead of sklearn for speed
+                GT_flat = GT_vol.ravel()
+                pred_flat = pred_vol.ravel()
+
+                # Overall IoU (Jaccard)
+                intersection_all = np.sum(GT_flat == pred_flat)
+                total = GT_flat.size
+                iou_score_all = intersection_all / total
+
+                # Overall F1 (micro-averaged)
                 f1_score_all = skl.f1_score(
-                    GT_vol.flatten(), pred_vol.flatten(), average="micro"
+                    GT_flat, pred_flat, average="micro"
                 )
 
                 # Add to lists
