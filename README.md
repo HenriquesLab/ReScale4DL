@@ -54,6 +54,13 @@ Notebook: [`Evaluate_Segmentation.ipynb`](https://github.com/HenriquesLab/ReScal
 ### 3. Rescale and crop 
 Notebook: [`Rescale_Foundation_Models.ipynb`](https://github.com/HenriquesLab/ReScale4DL/blob/main/Notebooks/Rescale_Foundation_Models.ipynb)
 
+#### Additional DL resources for microscopy:
+The deep learning networks presented in the ReScale4DL paper were trained using the following platforms:
+
+* **[ZeroCostDL4Mic](https://github.com/HenriquesLab/ZeroCostDL4Mic)**: A Google Colab-based no-cost toolbox to explore Deep Learning in Microscopy
+* **[DL4MicEverywhere](https://github.com/HenriquesLab/DL4MicEverywhere)**: Docker-based implementation bringing the ZeroCostDL4Mic experience for local deployment
+
+For detailed hyperparameter settings and training configurations, please refer to **Table 1** in our [bioRxiv preprint](https://doi.org/10.1101/2025.04.09.647871).
 
 ## Contributing
 We welcome contributions through:
