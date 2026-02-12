@@ -174,6 +174,111 @@ def find_matching_labels(gt: np.array, pred: np.array):
     return matching_labels
 
 
+def compute_labels_matching_scores_3d(gt: np.array, pred: np.array):
+    """
+    Compute matching scores between ground truth and predicted labels for 3D
+    volumes.
+
+    Parameters
+    ----------
+    gt : np.array
+        Ground truth labels (3D array).
+    pred : np.array
+        Predicted labels (3D array).
+
+    Returns
+    -------
+    dict
+        Dictionary with gt_label as keys and a list of tuples
+        (pred_label, score) as values.
+    """
+    scores = {}
+    gt_labels = np.unique(gt)
+
+    for lbl in gt_labels[1:]:  # skips the background label
+        scores[lbl] = []
+        z_idx, rows_idx, cols_idx = np.nonzero(gt == lbl)
+        min_z, max_z = np.min(z_idx), np.max(z_idx)
+        min_row, max_row = np.min(rows_idx), np.max(rows_idx)
+        min_col, max_col = np.min(cols_idx), np.max(cols_idx)
+
+        pred_box = pred[
+            min_z : max_z + 1, min_row : max_row + 1, min_col : max_col + 1
+        ]
+        pred_labels_in_box = np.unique(pred_box)
+        for pred_lbl in pred_labels_in_box:
+            score = score_label_overlap_3d(gt, pred, lbl, pred_lbl)
+            scores[lbl].append([pred_lbl, score])
+
+        scores[lbl] = sorted(scores[lbl], key=lambda x: x[1], reverse=True)
+
+    return scores
+
+
+def score_label_overlap_3d(gt: np.array, pred: np.array, gt_label, pred_label):
+    """
+    Calculate the score of label overlap between ground truth and prediction
+    for 3D volumes.
+
+    Parameters
+    ----------
+    gt : np.array
+        Ground truth labels (3D array).
+    pred : np.array
+        Predicted labels (3D array).
+    gt_label : int
+        Label in ground truth.
+    pred_label : int
+        Label in prediction.
+
+    Returns
+    -------
+    float
+        Score of label overlap.
+    """
+    gt_mask = gt == gt_label
+    pred_mask = pred == pred_label
+
+    intersection = np.sum(gt_mask & pred_mask)
+    union = np.sum(gt_mask | pred_mask)
+
+    if union == 0:
+        score = 0.0
+    else:
+        score = intersection / union
+
+    return score
+
+
+def find_matching_labels_3d(gt: np.array, pred: np.array):
+    """
+    Find the matching labels between ground truth and prediction for 3D
+    volumes. If a pred_label has no assignment in the ground truth, assign
+    it to 0.
+
+    Parameters
+    ----------
+    gt : np.array
+        Ground truth labels (3D array).
+    pred : np.array
+        Predicted labels (3D array).
+
+    Returns
+    -------
+    list
+        List of tuples (gt_label, pred_label, score).
+    """
+    if np.unique(pred).shape[0] == 1:
+        return ((gt_lbl, 0, 0) for gt_lbl in np.unique(gt))
+
+    scores = compute_labels_matching_scores_3d(gt, pred)
+    pred_labels = np.unique(pred)
+
+    # Process scores to resolve conflicts and get final matching labels
+    matching_labels = remove_duplicates(scores, pred_labels)
+    return matching_labels
+
+
 def incremental_dir_creation(parent_dir, incr_dir):
     """
     Create a new directory with an incremented name if it already exists.
