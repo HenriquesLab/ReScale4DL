@@ -164,5 +164,6 @@ Data/Staph
 .gitignore
 Examples/Processed
 Examples/data2rescale/Processed
+Examples/analysis_results/*.csv
 Notebooks/testing_reescale4dl.ipynb
 .idea
