@@ -4,6 +4,62 @@ from functools import lru_cache
 from typing import List, Dict, Optional
 
 
+def get_csv_dict(
+    main_directory: str,
+    skiped_folders: Optional[List[str]] = [".DS_Store", "__pycache__"],
+) -> Dict[str, List[str]]:
+    """
+    Find all csv files in the latest Results folder of each folder in the input directory.
+
+    Args:
+        directory (str): The input directory containing the sub folders contating the image files.
+                            directory |----> Dataset_folder|----> Grandparent_Folder |----> Parent_Folder |----> Files
+        skiped_folders (Optional[List[str]]): A list of folders to skip when searching for csv files.
+
+    Returns:
+        csv_dict (Dict[str, List[str]]): A dictionary containing the csv files in the Results folder of each folder in the input directory.
+    """
+
+    # Initialize a dictionary to store the csv files names
+    csv_dict = {}
+
+    # Get the list of directories in the main directory
+    directory_list = os.listdir(main_directory)
+
+    for sub_dir in directory_list:
+        if sub_dir in skiped_folders:
+            continue
+        else:
+            curr_dir = os.path.join(main_directory, sub_dir)
+
+            # Create the Results folder path for the current directory
+            results_dir = os.path.join(curr_dir, "Results")
+            base_results_dir = results_dir
+            count = 1
+
+            if not os.path.exists(results_dir):
+                continue
+
+            else:
+                while os.path.exists(results_dir):
+                    prev_results_dir = results_dir
+                    results_dir = base_results_dir + "_" + f"{count:02d}"
+                    count += 1
+
+                results_dir = prev_results_dir
+
+            # Find all csv files in the Results folder in the current directory
+            csv_dict[sub_dir] = [
+                os.path.join(results_dir, f)
+                for f in sorted(os.listdir(results_dir))
+                if f.endswith(".csv")
+            ]
+
+    print("DONE!")
+
+    return csv_dict
+
+
 def check_crop_img(arr, bin_factor):
     """
     Crop the image if any of the dimensions is not divisible by the bin factor.

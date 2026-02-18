@@ -15,8 +15,6 @@ from sklearn import metrics as skl  # type: ignore
 from time import perf_counter, strftime, gmtime
 from scipy import ndimage  # type: ignore
 from typing import List, Optional, Tuple, Dict, Literal, Union
-import ast
-import math
 from ..utils import find_matching_labels_3d
 
 ## Main Function
