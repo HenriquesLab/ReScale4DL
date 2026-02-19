@@ -3,10 +3,114 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+from skimage.io import imread
+import os
 from typing import List, Optional, Tuple, Dict, Literal, Union
-
 from rescale4dl.utils import get_csv_dict
 from rescale4dl.metrics.fov_estimates import microscope_FOV_area, obj_per_microscope_FOV
+
+
+def _load_2d_or_3d_slice(path: str, slice_axis: int = 0, slice_index: int | None = None):
+    """Load an image/volume and return a 2D slice for plotting."""
+    arr = imread(path)
+
+    if arr.ndim == 2:
+        return arr
+    if arr.ndim == 3 and arr.shape[-1] in (3, 4):
+        return arr
+
+    if arr.ndim == 3:
+        if slice_axis not in (0, 1, 2):
+            raise ValueError("slice_axis must be 0, 1, or 2 for 3D data.")
+        vol = np.moveaxis(arr, slice_axis, 0)
+        if slice_index is None:
+            slice_index = vol.shape[0] // 2
+        if not (0 <= slice_index < vol.shape[0]):
+            raise ValueError(
+                f"slice_index must be in [0, {vol.shape[0] - 1}] for axis {slice_axis}."
+            )
+        return vol[slice_index]
+
+    raise ValueError(f"Unsupported array ndim={arr.ndim} for file {path}.")
+
+
+def plot_segmentation_example(
+        input_dir: str,
+        dataset: str,
+        scaling: str,
+        slice_axis: int = 0,
+        slice_index: int | None = None,
+        cmap: str = "gray",
+):
+    """
+    Plot BOTH object-level AND binary segmentation TP/FP/FN images.
+    10-panel layout: [GT, Pred, Obj-TP, Obj-FP, Obj-FN] + [Bin-TP, Bin-FP, Bin-FN]
+    """
+    example_images_dir = os.path.join(input_dir, dataset, scaling)
+    example_images_dir_GT = os.path.join(example_images_dir, "GT")
+    example_images_dir_Prediction = os.path.join(example_images_dir, "Prediction")
+    example_images_results_dir = os.path.join(input_dir, dataset, "Results", scaling)
+
+    # Binary results directory (same Results folder)
+    binary_results_dir = example_images_results_dir
+
+    # Pick first .tif in GT folder
+    example_image = [f for f in os.listdir(example_images_dir_GT) if f.endswith(".tif")][0]
+    example_stem = example_image.rsplit(".tif", 1)[0]
+
+    # OBJECT-LEVEL paths (your original 5)
+    gt_path = os.path.join(example_images_dir_GT, f"{example_stem}.tif")
+    pred_path = os.path.join(example_images_dir_Prediction, f"{example_stem}.tif")
+    obj_tp_path = os.path.join(binary_results_dir, f"{example_stem}_true_positives.tif")
+    obj_fp_path = os.path.join(binary_results_dir, f"{example_stem}_false_positives.tif")
+    obj_fn_path = os.path.join(binary_results_dir, f"{example_stem}_false_negatives.tif")
+
+    # BINARY SEGMENTATION paths (the 5 new ones from binary_mask_stats)
+    bin_tp_path = os.path.join(binary_results_dir, f"{example_stem}_TP_binary.tif")
+    bin_fp_path = os.path.join(binary_results_dir, f"{example_stem}_FP_binary.tif")
+    bin_fn_path = os.path.join(binary_results_dir, f"{example_stem}_FN_binary.tif")
+
+    # Load all 8 images (automatically handles 2D/3D)
+    gt_img = _load_2d_or_3d_slice(gt_path, slice_axis, slice_index)
+    pred_img = _load_2d_or_3d_slice(pred_path, slice_axis, slice_index)
+    obj_tp_img = _load_2d_or_3d_slice(obj_tp_path, slice_axis, slice_index)
+    obj_fp_img = _load_2d_or_3d_slice(obj_fp_path, slice_axis, slice_index)
+    obj_fn_img = _load_2d_or_3d_slice(obj_fn_path, slice_axis, slice_index)
+
+    bin_tp_img = _load_2d_or_3d_slice(bin_tp_path, slice_axis, slice_index)
+    bin_fp_img = _load_2d_or_3d_slice(bin_fp_path, slice_axis, slice_index)
+    bin_fn_img = _load_2d_or_3d_slice(bin_fn_path, slice_axis, slice_index)
+    if slice_index is None:
+        slice_index_plot = "middle"
+    else:
+        slice_index_plot = str(slice_index)
+
+    # 2-row layout: Object-level (top) + Binary-level (bottom)
+    fig, axes = plt.subplots(2, 5, figsize=(25, 10))
+
+    # Row 1: Object-level segmentation
+    images_row1 = [gt_img, pred_img, obj_tp_img, obj_fp_img, obj_fn_img]
+    titles_row1 = [f"Ground Truth z={slice_index_plot}", "Prediction", "Obj-TP", "Obj-FP", "Obj-FN"]
+
+    for i, (img, title) in enumerate(zip(images_row1, titles_row1)):
+        axes[0, i].imshow(img, cmap=cmap)
+        axes[0, i].set_axis_off()
+        axes[0, i].set_title(title, fontsize=12, fontweight="bold")
+
+    # Row 2: Binary segmentation
+    images_row2 = [gt_img, pred_img, bin_tp_img, bin_fp_img, bin_fn_img]  # Reuse GT/Pred
+    titles_row2 = ["", "", "Bin-TP", "Bin-FP", "Bin-FN"]
+
+    for i, (img, title) in enumerate(zip(images_row2, titles_row2)):
+        axes[1, i].imshow(img, cmap=cmap)
+        axes[1, i].set_axis_off()
+        axes[1, i].set_title(title, fontsize=12, fontweight="bold")
+
+    plt.tight_layout()
+    plt.show()
+
+
+
 
 def mean_obj_diam_dict(
     dataset_name: str,
