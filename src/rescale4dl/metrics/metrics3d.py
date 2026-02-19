@@ -80,7 +80,9 @@ def morphology_3d(
         # Remaining sub directories are the ones to calculate properties for
         else:
             print("Calculating properties for " + sub_dir)
-
+            if sampling_dir_list is None:
+                sampling_dir_list = [i for i in os.listdir(curr_dir) if
+                                     os.path.isdir(os.path.join(curr_dir, i))]
             # Create folder to store results if it doesn't exist
             result_dir = os.path.join(curr_dir, "Results")
             base_result_dir = result_dir
@@ -139,24 +141,35 @@ def per_object_statistics_3d(
         "downsampling_8",
         "downsampling_16",
     ],
+    iou_threshold: float = 0.5,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Calculate the IoU, f1 score, and other statistics for each object in
     3D volumes.
 
-    Args:
-        directory (str): Directory with folders of sampling folders with GT
-                        and Prediction folder pairs inside.
-        result_dir (str): Directory to save the results.
+    Matching is done label-wise using find_matching_labels_3d, and
+    true positives / false negatives / false positives are computed
+    voxel-wise in a way consistent with the 2D implementation.
 
-    Returns:
-        Tuple[pd.DataFrame, pd.DataFrame]:
-            - The first dataframe contains per object IoU and f1 score
-              statistics, for Ground Truth and Prediction.
-            - The second dataframe contains a summary of the statistics per
-              field of view, including Sensitivity and Accuracy.
+    Parameters
+    ----------
+    directory : str
+        Directory with folders of sampling folders with GT and Prediction
+        folder pairs inside.
+    result_dir : str
+        Directory to save the results.
+    sampling_dir_list : list of str, optional
+        List of sampling folders to analyse.
+    iou_threshold : float, optional
+        Minimum IoU to accept a GT–Prediction pair as a true positive.
+
+    Returns
+    -------
+    summary_df : pd.DataFrame
+        Summary statistics per volume (FOV).
+    IoU_per_obj_df : pd.DataFrame
+        Per-object statistics.
     """
-
     # Create dataframes to store the results
     IoU_per_obj_df = pd.DataFrame([])
     summary_df = pd.DataFrame([])
@@ -215,12 +228,8 @@ def per_object_statistics_3d(
             os.mkdir(res_pred_dir)
 
         # Get the list of GT and Prediction .tif files
-        GT_file_list = [
-            file for file in os.listdir(GT_path) if file.endswith(".tif")
-        ]
-        pred_file_list = [
-            file for file in os.listdir(pred_path) if file.endswith(".tif")
-        ]
+        GT_file_list = [file for file in os.listdir(GT_path) if file.endswith(".tif")]
+        pred_file_list = [file for file in os.listdir(pred_path) if file.endswith(".tif")]
 
         # Get the list of the paired files
         paired_files = list(set(GT_file_list) & set(pred_file_list))
@@ -242,50 +251,55 @@ def per_object_statistics_3d(
 
             # Check if the shape of the GT and Prediction volumes are the same
             if GT_vol.shape == pred_vol.shape:
-                # Calculate the number of objects in each volume and remap
+                # Relabel to consecutive labels
                 GT_remap, _, _ = ski.segmentation.relabel_sequential(GT_vol)
-                pred_remap, _, _ = ski.segmentation.relabel_sequential(
-                    pred_vol
-                )
-                GT_count = np.max(GT_remap)
-                pred_count = np.max(pred_remap)
+                pred_remap, _, _ = ski.segmentation.relabel_sequential(pred_vol)
 
-                # Print the number of objects in each volume
+                GT_count = int(np.max(GT_remap))
+                pred_count = int(np.max(pred_remap))
+
                 print(
                     f"{file} from {GP_folder} has {GT_count} objects in GT "
                     f"and {pred_count} objects in Prediction"
                 )
 
                 # Get matching labels between GT and Prediction
-                matching_labels = list(
-                    find_matching_labels_3d(GT_remap, pred_remap)
-                )
+                # Expected: iterable of (gt_lbl, pred_lbl, iou_score)
+                raw_matches = list(find_matching_labels_3d(GT_remap, pred_remap))
 
-                # Initialize the true positives, false positives, and false
-                # negatives arrays
-                true_positives = np.zeros_like(GT_vol)
-                false_positives = np.zeros_like(GT_vol)
-                false_negatives = np.zeros_like(GT_vol)
+                # Filter by IoU threshold (and exclude background if present)
+                matching_labels = [
+                    (gt_lbl, pred_lbl, iou)
+                    for (gt_lbl, pred_lbl, iou) in raw_matches
+                    if gt_lbl != 0 and pred_lbl != 0 and iou >= iou_threshold
+                ]
 
-                # Loop through all matching labels
-                for gt_lbl, pred_lbl, iou_score in matching_labels:
-                    # Skip background
-                    if gt_lbl == 0:
-                        continue
+                # Make lookup dictionaries for fast access
+                # For each GT label, get best matching pred label (highest IoU)
+                gt_to_best = {}
+                for gt_lbl, pred_lbl, iou in matching_labels:
+                    if gt_lbl not in gt_to_best or iou > gt_to_best[gt_lbl][1]:
+                        gt_to_best[gt_lbl] = (pred_lbl, iou)
 
-                    # Get GT object mask
+                used_pred_labels = set()
+
+                # Initialize voxel maps
+                true_positives = np.zeros_like(GT_vol, dtype=GT_remap.dtype)
+                false_positives = np.zeros_like(GT_vol, dtype=GT_remap.dtype)
+                false_negatives = np.zeros_like(GT_vol, dtype=GT_remap.dtype)
+
+                # Per-object loop over GT labels (excluding background)
+                for gt_lbl in range(1, GT_count + 1):
                     GT_obj = GT_remap == gt_lbl
 
-                    # Calculate the voxel coverage and object diameter values
+                    # Calculate GT object stats
                     GT_voxel_coverage = voxel_coverage_percent_3d(GT_obj)
-                    gt_min_d, gt_max_d, gt_mean_d, gt_median_d = (
-                        object_diameter_3d(GT_obj)
-                    )
+                    gt_min_d, gt_max_d, gt_mean_d, gt_median_d = object_diameter_3d(GT_obj)
                     gt_volume = GT_obj.sum()
                     gt_volume_filled = ndimage.binary_fill_holes(GT_obj).sum()
                     gt_surface_area = surface_area_3d(GT_obj)
 
-                    # Add object information to lists
+                    # Add GT info to lists
                     GP_folder_list.append(GP_folder)
                     file_name_list.append(file)
                     GT_label_list.append(gt_lbl)
@@ -298,13 +312,12 @@ def per_object_statistics_3d(
                     GT_volume_filled_list.append(gt_volume_filled)
                     GT_surface_area_list.append(gt_surface_area)
 
-                    # If the current object has no match in Prediction
-                    if pred_lbl == 0 or pred_count == 0:
+                    # Case 1: there is no acceptable match for this GT label
+                    if gt_lbl not in gt_to_best or pred_count == 0:
                         pred_label_list.append(0)
-                        pred_px_cov_list.append(0)
-                        IoU_list.append(0)
-                        f1_score_list.append(0)
-
+                        pred_px_cov_list.append(0.0)
+                        IoU_list.append(0.0)
+                        f1_score_list.append(0.0)
                         pred_min_diameter.append(np.nan)
                         pred_max_diameter.append(np.nan)
                         pred_mean_diameter.append(np.nan)
@@ -313,34 +326,33 @@ def per_object_statistics_3d(
                         pred_volume_filled_list.append(np.nan)
                         pred_surface_area_list.append(np.nan)
 
-                        false_negatives[GT_remap == gt_lbl] = gt_lbl
-
+                        # Mark this GT object as false negative
+                        false_negatives[GT_obj] = gt_lbl
                         continue
 
-                    # Get prediction object mask
+                    # Case 2: matched prediction label, treat as TP
+                    pred_lbl, iou_score = gt_to_best[gt_lbl]
+                    used_pred_labels.add(pred_lbl)
+
                     pred_obj = pred_remap == pred_lbl
 
-                    # Calculate F1 score
+                    # F1 score in 3D: flatten to 1D
                     f1_score = skl.f1_score(
                         GT_obj.flatten(), pred_obj.flatten(), average="micro"
                     )
 
-                    # Calculate voxel coverage and object diameter for
-                    # Prediction Label
+                    # Prediction stats
                     pred_voxel_coverage = voxel_coverage_percent_3d(pred_obj)
-                    pred_min_d, pred_max_d, pred_mean_d, pred_median_d = (
-                        object_diameter_3d(pred_obj)
-                    )
+                    (
+                        pred_min_d,
+                        pred_max_d,
+                        pred_mean_d,
+                        pred_median_d,
+                    ) = object_diameter_3d(pred_obj)
                     pred_volume = pred_obj.sum()
-                    pred_volume_filled = ndimage.binary_fill_holes(
-                        pred_obj
-                    ).sum()
+                    pred_volume_filled = ndimage.binary_fill_holes(pred_obj).sum()
                     pred_surface = surface_area_3d(pred_obj)
 
-                    # Add object to the true positives array
-                    true_positives[pred_remap == pred_lbl] = gt_lbl
-
-                    # Add object information to lists
                     pred_label_list.append(pred_lbl)
                     pred_px_cov_list.append(pred_voxel_coverage)
                     IoU_list.append(iou_score)
@@ -353,14 +365,15 @@ def per_object_statistics_3d(
                     pred_volume_filled_list.append(pred_volume_filled)
                     pred_surface_area_list.append(pred_surface)
 
-                # Find false positives (unmatched prediction labels)
-                for _, pred_lbl, _ in matching_labels:
-                    if pred_lbl != 0:
-                        # Mark as true positive, remove from pred_remap
-                        pred_remap[pred_remap == pred_lbl] = 0
+                    # Mark TP voxels
+                    true_positives[pred_obj] = gt_lbl
 
-                # Store false positives in the array
-                false_positives[pred_remap != 0] = pred_remap[pred_remap != 0]
+                # After processing all GT labels, mark FP as any prediction object
+                # label that was never used in a TP pair.
+                for pl in range(1, pred_count + 1):
+                    if pl not in used_pred_labels:
+                        fp_mask = pred_remap == pl
+                        false_positives[fp_mask] = pl
 
                 # Save the volumes
                 ski.io.imsave(
@@ -371,6 +384,7 @@ def per_object_statistics_3d(
                     true_positives,
                     check_contrast=False,
                 )
+
                 ski.io.imsave(
                     os.path.join(
                         res_pred_dir,
@@ -379,6 +393,7 @@ def per_object_statistics_3d(
                     false_negatives,
                     check_contrast=False,
                 )
+
                 ski.io.imsave(
                     os.path.join(
                         res_pred_dir,
@@ -392,12 +407,8 @@ def per_object_statistics_3d(
                 file_for_count.append(file)
                 folder_for_count.append(GP_folder)
                 true_positives_count.append(len(np.unique(true_positives)) - 1)
-                false_negatives_count.append(
-                    len(np.unique(false_negatives)) - 1
-                )
-                false_positives_count.append(
-                    len(np.unique(false_positives)) - 1
-                )
+                false_negatives_count.append(len(np.unique(false_negatives)) - 1)
+                false_positives_count.append(len(np.unique(false_positives)) - 1)
                 GT_count_count.append(GT_count)
                 pred_count_count.append(pred_count)
 
@@ -436,9 +447,9 @@ def per_object_statistics_3d(
         (np.pi ** (1.0 / 3.0))
         * (6 * IoU_per_obj_df["GT_volume"].astype(float)) ** (2.0 / 3.0)
     ) / IoU_per_obj_df["GT_surface_area"].astype(float)
-    IoU_per_obj_df["GT_Filledness"] = IoU_per_obj_df["GT_volume"].astype(
-        float
-    ) / IoU_per_obj_df["GT_volume_filled"].astype(float)
+    IoU_per_obj_df["GT_Filledness"] = IoU_per_obj_df["GT_volume"].astype(float) / (
+        IoU_per_obj_df["GT_volume_filled"].astype(float)
+    )
 
     # Store Prediction volume properties in a dataframe
     IoU_per_obj_df["pred_diameter_min"] = pred_min_diameter
@@ -459,54 +470,55 @@ def per_object_statistics_3d(
     ) / IoU_per_obj_df["pred_volume_filled"].astype(float)
 
     # Summary statistics per file
-    summary_df = (
-        IoU_per_obj_df.groupby(["Grand_Parent_Folder", "File_name"])
-        .agg("mean")
-        .reset_index()
-    )
-
-    summary_df.drop(["GT_Label", "Prediction_Label"], axis=1, inplace=True)
-
-    count_df["Grand_Parent_Folder"] = folder_for_count
-    count_df["File_name"] = file_for_count
-    count_df["GT_count"] = GT_count_count
-    count_df["pred_count"] = pred_count_count
-    count_df["true_positives_count"] = true_positives_count
-    count_df["false_negatives_count"] = false_negatives_count
-    count_df["false_positives_count"] = false_positives_count
-
-    summary_df = summary_df.merge(
-        count_df, on=["Grand_Parent_Folder", "File_name"], how="left"
-    )
-
-    # Calculate summary Sensitivity/Recall and Accuracy
-    summary_df["Sensitivity"] = summary_df["true_positives_count"] / (
-        summary_df["true_positives_count"]
-        + summary_df["false_negatives_count"]
-    )
-    summary_df["Accuracy"] = summary_df["true_positives_count"] / (
-        summary_df["true_positives_count"]
-        + summary_df["false_positives_count"]
-        + summary_df["false_negatives_count"]
-    )
-
-    # Save summary statistics in csv file
-    summary_df.to_csv(
-        os.path.join(
-            result_dir, directory.split(os.sep)[-1] + "_summary_stats.csv"
+    if len(IoU_per_obj_df) > 0:
+        summary_df = (
+            IoU_per_obj_df.groupby(["Grand_Parent_Folder", "File_name"])
+            .agg("mean")
+            .reset_index()
         )
-    )
+        summary_df.drop(["GT_Label", "Prediction_Label"], axis=1, inplace=True)
 
-    # Save IoU per object statistics in csv file
-    IoU_per_obj_df.to_csv(
-        os.path.join(
-            result_dir, directory.split(os.sep)[-1] + "_IoU_per_obj_stats.csv"
+        count_df["Grand_Parent_Folder"] = folder_for_count
+        count_df["File_name"] = file_for_count
+        count_df["GT_count"] = GT_count_count
+        count_df["pred_count"] = pred_count_count
+        count_df["true_positives_count"] = true_positives_count
+        count_df["false_negatives_count"] = false_negatives_count
+        count_df["false_positives_count"] = false_positives_count
+
+        summary_df = summary_df.merge(
+            count_df, on=["Grand_Parent_Folder", "File_name"], how="left"
         )
-    )
 
-    print("Done.")
+        # Calculate summary Sensitivity/Recall and Accuracy
+        summary_df["Sensitivity"] = summary_df["true_positives_count"] / (
+            summary_df["true_positives_count"]
+            + summary_df["false_negatives_count"]
+        )
+        summary_df["Accuracy"] = summary_df["true_positives_count"] / (
+            summary_df["true_positives_count"]
+            + summary_df["false_positives_count"]
+            + summary_df["false_negatives_count"]
+        )
+
+        # Save summary statistics in csv file
+        summary_df.to_csv(
+            os.path.join(
+                result_dir, directory.split(os.sep)[-1] + "_summary_stats.csv"
+            )
+        )
+
+        # Save IoU per object statistics in csv file
+        IoU_per_obj_df.to_csv(
+            os.path.join(
+                result_dir, directory.split(os.sep)[-1] + "_IoU_per_obj_stats.csv"
+            )
+        )
+
+        print("Done.")
 
     return summary_df, IoU_per_obj_df
+
 
 
 def semantic_statistics_3d(
@@ -708,21 +720,36 @@ def binary_mask_statistics_3d(
         "downsampling_8",
         "downsampling_16",
     ],
+    max_samples_to_save: int = 3,
 ) -> pd.DataFrame:
     """
     Calculate the IoU, f1 score, and other statistics for a binary mask 3D
     volume from the semantic segmentation GT and Prediction volumes.
 
-    Args:
-        directory (str): Directory with folders of sampling folders with GT
-                        and Prediction folder pairs inside.
-        result_dir (str): Directory to save the results.
+    In addition to IoU and F1, this function computes voxel-level
+    true positives (TP), false positives (FP), and false negatives (FN)
+    for each volume, and saves TP/FP/FN volumes for up to
+    `max_samples_to_save` examples per sampling folder.
 
-    Returns:
-        pd.DataFrame: A dataframe containing the binary mask IoU and f1 score
-                     statistics.
+    Args
+    ----
+    directory : str
+        Directory with folders of sampling folders with GT and Prediction
+        folder pairs inside.
+    result_dir : str
+        Directory to save the results.
+    sampling_dir_list : list of str, optional
+        List of sampling folders to analyse.
+    max_samples_to_save : int, optional
+        Maximum number of volumes per sampling folder for which TP/FP/FN
+        3D masks are saved.
+
+    Returns
+    -------
+    IoU_per_BN_df : pd.DataFrame
+        A dataframe containing the binary mask IoU, f1 score and
+        TP/FP/FN counts per volume.
     """
-
     # Create dataframes to store the results
     IoU_per_BN_df = pd.DataFrame([])
     start_time = None
@@ -734,6 +761,14 @@ def binary_mask_statistics_3d(
     pred_label_list = []
     IoU_list = []
     f1_score_list = []
+
+    # New: voxel-level confusion counts
+    TP_vox_list = []
+    FP_vox_list = []
+    FN_vox_list = []
+
+    # Track how many examples we have saved per sampling folder
+    saved_examples_per_folder: Dict[str, int] = {}
 
     # Loop through the parent folders
     for GP_folder in sorted(sampling_dir_list):
@@ -751,15 +786,14 @@ def binary_mask_statistics_3d(
             os.mkdir(res_pred_dir)
 
         # Get the list of GT and Prediction .tif files
-        GT_file_list = [
-            file for file in os.listdir(GT_path) if file.endswith(".tif")
-        ]
-        pred_file_list = [
-            file for file in os.listdir(pred_path) if file.endswith(".tif")
-        ]
+        GT_file_list = [file for file in os.listdir(GT_path) if file.endswith(".tif")]
+        pred_file_list = [file for file in os.listdir(pred_path) if file.endswith(".tif")]
 
         # Get the list of the paired files
         paired_files = list(set(GT_file_list) & set(pred_file_list))
+
+        # Init saved counter for this folder
+        saved_examples_per_folder.setdefault(GP_folder, 0)
 
         # Loop through the paired files
         for file in paired_files:
@@ -792,6 +826,18 @@ def binary_mask_statistics_3d(
                     GT_binary.flatten(), pred_binary.flatten(), average="micro"
                 )
 
+                # Voxel-level confusion:
+                # TP: GT = 1, Pred = 1
+                # FP: GT = 0, Pred = 1
+                # FN: GT = 1, Pred = 0
+                TP_mask = GT_binary & pred_binary
+                FP_mask = (~GT_binary) & pred_binary
+                FN_mask = GT_binary & (~pred_binary)
+
+                TP_vox = int(TP_mask.sum())
+                FP_vox = int(FP_mask.sum())
+                FN_vox = int(FN_mask.sum())
+
                 # Add to lists
                 GP_folder_list.append(GP_folder)
                 file_name_list.append(file)
@@ -799,6 +845,35 @@ def binary_mask_statistics_3d(
                 pred_label_list.append("BINARY")
                 IoU_list.append(iou_score)
                 f1_score_list.append(f1_score)
+                TP_vox_list.append(TP_vox)
+                FP_vox_list.append(FP_vox)
+                FN_vox_list.append(FN_vox)
+
+                # Save example TP/FP/FN volumes for a few samples
+                if saved_examples_per_folder[GP_folder] < max_samples_to_save:
+                    base_name = file.split(".")[0]
+                    ski.io.imsave(
+                        os.path.join(
+                            res_pred_dir, base_name + "_TP_binary.tif"
+                        ),
+                        TP_mask.astype(np.uint8),
+                        check_contrast=False,
+                    )
+                    ski.io.imsave(
+                        os.path.join(
+                            res_pred_dir, base_name + "_FP_binary.tif"
+                        ),
+                        FP_mask.astype(np.uint8),
+                        check_contrast=False,
+                    )
+                    ski.io.imsave(
+                        os.path.join(
+                            res_pred_dir, base_name + "_FN_binary.tif"
+                        ),
+                        FN_mask.astype(np.uint8),
+                        check_contrast=False,
+                    )
+                    saved_examples_per_folder[GP_folder] += 1
 
             else:
                 print(
@@ -806,35 +881,35 @@ def binary_mask_statistics_3d(
                     f"Prediction folders."
                 )
 
-            print(
-                f"Elapsed time: "
-                f"{strftime('%H:%M:%S', gmtime(perf_counter() - start_time))}"
-            )
+            if start_time is not None:
+                print(
+                    f"Elapsed time: "
+                    f"{strftime('%H:%M:%S', gmtime(perf_counter() - start_time))}"
+                )
 
-    # Store Object properties in a dataframe
+    # Store results in dataframe
     IoU_per_BN_df["Grand_Parent_Folder"] = GP_folder_list
     IoU_per_BN_df["File_name"] = file_name_list
     IoU_per_BN_df["GT_Label"] = GT_label_list
     IoU_per_BN_df["Prediction_Label"] = pred_label_list
     IoU_per_BN_df["IoU"] = IoU_list
     IoU_per_BN_df["f1_score"] = f1_score_list
+    IoU_per_BN_df["TP_voxels"] = TP_vox_list
+    IoU_per_BN_df["FP_voxels"] = FP_vox_list
+    IoU_per_BN_df["FN_voxels"] = FN_vox_list
 
     # If dataframe is not empty save the results as csv
     if len(GP_folder_list) != 0:
-        # Save binary mask statistics in csv file
         IoU_per_BN_df.to_csv(
             os.path.join(
-                result_dir, directory.split(os.sep)[-1] + "_binary_stats.csv"
+                result_dir, directory.split(os.sep)[-1] + "_binary_mask_stats.csv"
             )
         )
-
         print("Done.")
-
     else:
         print("No binary mask files found.")
 
     return IoU_per_BN_df
-
 
 ## Miscellaneous functions
 

@@ -78,7 +78,9 @@ def morphology(
         # Remaining sub directories are the ones to calculate properties for
         else:
             print("Calculating properties for " + sub_dir)
-
+            if sampling_dir_list is None:
+                sampling_dir_list = [i for i in os.listdir(curr_dir) if
+                                     os.path.isdir(os.path.join(curr_dir, i))]
             # Create folder to store results if it doesn't exist, if it exists make new one
             result_dir = os.path.join(curr_dir, "Results")
             base_result_dir = result_dir
