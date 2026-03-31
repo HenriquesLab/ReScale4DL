@@ -2,7 +2,8 @@ import pandas as pd
 from scipy import stats
 import matplotlib.pyplot as plt
 import seaborn as sns
-from itertools import combinations
+    
+
 
 def choose_statistical_test(group1, group2):
     """
@@ -47,48 +48,62 @@ def perform_statistical_test(group1, group2, test_type):
         return stats.ttest_ind(group1, group2, equal_var=False)
     elif test_type == "Kolmogorov-Smirnov":
         return stats.ks_2samp(group1, group2)
+    
 
-def perform_statistical_analysis(df, quantitative_column, subcategory_00, subcategory_01,
-                                 test_type="Kolmogorov-Smirnov",choose_test="Manual"):
+def perform_statistical_analysis(df, quantitative_column, categorical_columns,
+                               test_type="Kolmogorov-Smirnov", choose_test="Manual"):
     """
-    Perform pairwise statistical analysis on groups defined by subcategories.
+    Perform pairwise statistical analysis on groups defined by multiple categorical variables.
     
     Args:
     df: pandas DataFrame containing the data
     quantitative_column: Name of the column containing the quantitative data to analyze
-    subcategory_01: Name of the column defining the subgroups to compare
-    subcategory_00: Name of the column defining the main groups
-    test_type: 
-      - "t-test": When both groups are normally distributed and have equal variances.
-      - "Welch's t-test": When both groups are normally distributed and have unequal variances.
-      - "Kolmogorov-Smirnov": When at least one of the variables is not normally distributed. 
-    choose_test: 
-      - "Automatic" if you want to run an automatic testing based on assessed properties of the data distribution. 
-      - "Manual" to manually indicate what test to run.
+    categorical_columns: List of column names defining the hierarchy of groups
+    test_type: "t-test", "Welch's t-test", or "Kolmogorov-Smirnov"
+    choose_test: "Automatic" or "Manual"
+    
     Returns:
     pandas DataFrame with results of statistical tests
     """
-    
-    groups_00 = df[subcategory_00].unique()
-    results = []
-    if choose_test!="Automatic":
+    if choose_test != "Automatic":
         print(f"The statistical test chosen is {test_type}")
-        
-    for group in groups_00:
-        group_data = df[df[subcategory_00] == group]
-        subgroups_01 = group_data[subcategory_01].unique()
-        
-        for subgroup1, subgroup2 in combinations(subgroups_01, 2):
-            data1 = group_data[group_data[subcategory_01] == subgroup1][quantitative_column]
-            data2 = group_data[group_data[subcategory_01] == subgroup2][quantitative_column]
-            if choose_test=="Automatic":
+    
+    # Get all unique combinations
+    combos_df = df[categorical_columns].drop_duplicates()
+    combinations_list = list(combos_df.itertuples(index=False, name=None))
+    
+    results = []
+    
+    # Perform pairwise comparisons within each combination level
+    for i, combo1 in enumerate(combinations_list):
+        for combo2 in combinations_list[i+1:]:  # Avoid duplicate pairs
+            
+            # Create masks for both combinations
+            mask1 = pd.Series([True] * len(df), index=df.index)
+            mask2 = pd.Series([True] * len(df), index=df.index)
+            
+            for j, col in enumerate(categorical_columns):
+                mask1 &= (df[col] == combo1[j])
+                mask2 &= (df[col] == combo2[j])
+            
+            data1 = df.loc[mask1, quantitative_column].dropna()
+            data2 = df.loc[mask2, quantitative_column].dropna()
+            
+            if len(data1) < 2 or len(data2) < 2:
+                continue
+                
+            if choose_test == "Automatic":
                 test_type = choose_statistical_test(data1, data2)
+            
             statistic, p_value = perform_statistical_test(data1, data2, test_type)
             
+            # Format hierarchy paths for output
+            path1 = ' | '.join([f"{categorical_columns[j]}: {combo1[j]}" for j in range(len(categorical_columns))])
+            path2 = ' | '.join([f"{categorical_columns[j]}: {combo2[j]}" for j in range(len(categorical_columns))])
+            
             results.append({
-                'Subcategory-00': group,
-                'Subgroup1': subgroup1,
-                'Subgroup2': subgroup2,
+                'Hierarchy1': path1,
+                'Hierarchy2': path2,
                 'Test': test_type,
                 'Statistic': statistic,
                 'p-value': p_value
@@ -96,36 +111,54 @@ def perform_statistical_analysis(df, quantitative_column, subcategory_00, subcat
     
     return pd.DataFrame(results)
 
-def plot_data_distributions(df, quantitative_column, subcategory_00, subcategory_01):
+def plot_data_distributions(df, quantitative_column, categorical_columns):
     """
-    Plot histograms and Q-Q plots for each subgroup to visualize data distributions.
+    Plot histograms and Q-Q plots for subgroups defined by multiple categorical variables.
     
     Args:
     df: pandas DataFrame containing the data
     quantitative_column: Name of the column containing the quantitative data to plot
-    subcategory_01: Name of the column defining the subgroups
-    subcategory_00: Name of the column defining the main groups
+    categorical_columns: List of column names defining the hierarchy of subgroups
     """
+
     plt.rcParams.update({'font.size': 8})
-    groups_00 = df[subcategory_00].unique()
     
-    for group in groups_00:
-        group_data = df[df[subcategory_00] == group]
-        subgroups_01 = group_data[subcategory_01].unique()
+    # Get all unique combinations across categorical columns
+    combos_df = df[categorical_columns].drop_duplicates()
+    combinations = list(combos_df.itertuples(index=False, name=None))
+    
+    n_groups = len(combinations)
+    if n_groups == 0:
+        print("No data found.")
+        return
+    
+    n_cols = 2  # Histogram + Q-Q
+    n_rows = n_groups
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(12, 3 * n_rows))
+    if n_rows == 1:
+        axes = axes.reshape(1, -1)
+    
+    for i, combo in enumerate(combinations):
+        # Create mask for this combination
+        mask = pd.Series([True] * len(df), index=df.index)
+        for j, col in enumerate(categorical_columns):
+            mask &= (df[col] == combo[j])
         
-        fig, axes = plt.subplots(len(subgroups_01), 2, figsize=(6, 2*len(subgroups_01)))
-        fig.suptitle(f'Data Distributions for {subcategory_00}: {group}')
+        data = df.loc[mask, quantitative_column].dropna()
+        if len(data) == 0:
+            axes[i, 0].text(0.5, 0.5, 'No data', ha='center', va='center', transform=axes[i, 0].transAxes)
+            axes[i, 1].text(0.5, 0.5, 'No data', ha='center', va='center', transform=axes[i, 1].transAxes)
+            continue
         
-        for i, subgroup in enumerate(subgroups_01):
-            data = group_data[group_data[subcategory_01] == subgroup][quantitative_column]
-            
-            # Histogram
-            sns.histplot(data, kde=True, ax=axes[i, 0])
-            axes[i, 0].set_title(f'{subcategory_01}: {subgroup} - Histogram')
-            
-            # Q-Q plot
-            stats.probplot(data, dist="norm", plot=axes[i, 1])
-            axes[i, 1].set_title(f'{subcategory_01}: {subgroup} - Q-Q Plot')
+        # Histogram
+        sns.histplot(data, kde=True, ax=axes[i, 0])
+        title_parts = [f"{categorical_columns[j]}: {combo[j]}" for j in range(len(categorical_columns))]
+        axes[i, 0].set_title(' | '.join(title_parts) + ' - Histogram')
         
-        plt.tight_layout()
-        plt.show()
+        # Q-Q plot
+        stats.probplot(data, dist="norm", plot=axes[i, 1])
+        axes[i, 1].set_title(' | '.join(title_parts) + ' - Q-Q Plot')
+    
+    fig.suptitle(f'Data Distributions by {quantitative_column}', fontsize=12)
+    plt.tight_layout()
+    plt.show()
