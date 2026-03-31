@@ -1,5 +1,6 @@
 # imports
 import numpy as np
+import math
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -49,14 +50,12 @@ def plot_segmentation_example(
     example_images_dir = os.path.join(input_dir, dataset, scaling)
     example_images_dir_GT = os.path.join(example_images_dir, "GT")
     example_images_dir_Prediction = os.path.join(example_images_dir, "Prediction")
-    example_images_results_dir = os.path.join(input_dir, dataset, "Results", scaling)
-
-    # Binary results directory (same Results folder)
-    binary_results_dir = example_images_results_dir
+    binary_results_dir = os.path.join(input_dir, dataset, "Results", scaling)
 
     # Pick first .tif in GT folder
-    example_image = [f for f in os.listdir(example_images_dir_GT) if f.endswith(".tif")][0]
-    example_stem = example_image.rsplit(".tif", 1)[0]
+    example_image = [f for f in os.listdir(binary_results_dir) if f.__contains__("TP_binary.tif")][0]
+    
+    example_stem = example_image.rsplit("_TP_binary.tif", 1)[0]
 
     # OBJECT-LEVEL paths (your original 5)
     gt_path = os.path.join(example_images_dir_GT, f"{example_stem}.tif")
@@ -93,7 +92,10 @@ def plot_segmentation_example(
     titles_row1 = [f"Ground Truth z={slice_index_plot}", "Prediction", "Obj-TP", "Obj-FP", "Obj-FN"]
 
     for i, (img, title) in enumerate(zip(images_row1, titles_row1)):
-        axes[0, i].imshow(img, cmap=cmap)
+        if title.__contains__("-F"):
+            axes[0, i].imshow(img, cmap="Reds")
+        else:
+            axes[0, i].imshow(img, cmap=cmap)  # Reuse original cmap for GT/Pred
         axes[0, i].set_axis_off()
         axes[0, i].set_title(title, fontsize=12, fontweight="bold")
 
@@ -102,8 +104,11 @@ def plot_segmentation_example(
     titles_row2 = ["", "", "Bin-TP", "Bin-FP", "Bin-FN"]
 
     for i, (img, title) in enumerate(zip(images_row2, titles_row2)):
-        axes[1, i].imshow(img, cmap=cmap)
-        axes[1, i].set_axis_off()
+        if title.__contains__("-F"):
+            axes[1, i].imshow(img, cmap="Reds")
+        else:
+            axes[1, i].imshow(img, cmap=cmap)  # Reuse original cmap for GT/Pred
+        axes[1, i].set_axis_off()  
         axes[1, i].set_title(title, fontsize=12, fontweight="bold")
 
     plt.tight_layout()
@@ -176,7 +181,7 @@ def generate_binary_semantic_box_plot(
     fig_name: str,
     y_axis: str,
     thoughput_plot: Optional[bool] = False,
-    metrics_csv_path: Optional[str] = None,
+    original_folder_name: Optional[str] = "OG",
     y_axis_2: Optional[str] = None,
     output_path: Optional[str] = None,
     color_line: Optional[str] = "#d62728",
@@ -208,9 +213,10 @@ def generate_binary_semantic_box_plot(
     csv_dict = get_csv_dict(folder_path)
 
     # Import CSVs
-    csv_BN = pd.read_csv(csv_dict[dataset_SS][1])
-    csv_SS = pd.read_csv(csv_dict[dataset_SS][2])
-    csv_instance_summary = pd.read_csv(csv_dict[dataset_name][-1])
+    csv_BN = pd.read_csv([f for f in csv_dict[dataset_SS] if f.__contains__("binary_mask")][0]) #pd.read_csv(csv_dict[dataset_SS][1])
+    csv_SS = pd.read_csv([f for f in csv_dict[dataset_SS] if f.__contains__("semantic")][0]) # pd.read_csv(csv_dict[dataset_SS][2])
+    path_instance_summary = [f for f in csv_dict[dataset_name] if f.__contains__("summary_stats")][0]
+    csv_instance_summary = pd.read_csv(path_instance_summary)
 
     # Calculate mean diameter per sampling and use it to calculate % Diameter per Pixel
     mean_diam_sampling = mean_obj_diam_dict(dataset_name, csv_dict)
@@ -294,7 +300,7 @@ def generate_binary_semantic_box_plot(
         ax2 = ax1.twinx()
 
         # Calculate microscopeFOV from original resolution dataset
-        mic_FOV_area = microscope_FOV_area(metrics_csv_path, dataset_name)
+        mic_FOV_area = microscope_FOV_area(path_instance_summary, original_folder_name=original_folder_name)
 
         # Calculate the objects per FOV for each sampling
         objs_per_FOV_df = obj_per_microscope_FOV(
@@ -391,7 +397,7 @@ def generate_semantic_gt_pred_bar_plot(
     csv_dict = get_csv_dict(folder_path)
 
     # Import CSVs
-    csv_instance_summary = pd.read_csv(csv_dict[dataset_name][-1])
+    csv_instance_summary = pd.read_csv([f for f in csv_dict[dataset_name] if f.__contains__("summary_stats")][0])  # pd.read_csv(csv_dict[dataset_name][-1])
 
     # Calculate mean diameter per sampling and use it to calculate % Diameter per Pixel
     mean_diam_sampling = mean_obj_diam_dict(dataset_name, csv_dict)
@@ -499,8 +505,8 @@ def generate_instance_box_plot(
     fig_name: str,
     y_axis: str,
     thoughput_plot: Optional[bool] = False,
+    original_folder_name: Optional[str] = "OG",
     y_axis_2: Optional[str] = None,
-    metrics_csv_path: Optional[str] = None,
     color_line: Optional[str] = "#d62728",
     subset_filenames_to_exclude: Optional[List[str]] = None,
     output_path: Optional[str] = None,
@@ -534,7 +540,8 @@ def generate_instance_box_plot(
     csv_dict = get_csv_dict(folder_path)
 
     # Import CSVs
-    csv_instance_summary = pd.read_csv(csv_dict[dataset_name][-1])
+    path_instance_summary = [f for f in csv_dict[dataset_name] if f.__contains__("summary_stats")][0]
+    csv_instance_summary = pd.read_csv(path_instance_summary)
 
     # Calculate mean diameter per sampling and use it to calculate % Diameter per Pixel
     mean_diam_sampling = mean_obj_diam_dict(
@@ -630,7 +637,7 @@ def generate_instance_box_plot(
         ax2 = ax1.twinx()
 
         # Calculate microscopeFOV from original resolution dataset
-        mic_FOV_area = microscope_FOV_area(metrics_csv_path, dataset_name)
+        mic_FOV_area = microscope_FOV_area(path_instance_summary, original_folder_name=original_folder_name)
 
         # Calculate the objects per FOV for each sampling
         objs_per_FOV_df = obj_per_microscope_FOV(
@@ -737,8 +744,8 @@ def generate_instance_gt_pred_bar_plot(
     )
 
     # Import CSVs
-    csv_instance_summary = pd.read_csv(csv_dict[dataset_name][-1])
-    csv_instance_per_obj = pd.read_csv(csv_dict[dataset_name][0])
+    csv_instance_summary = pd.read_csv([f for f in csv_dict[dataset_name] if f.__contains__("summary_stats")][0]) # pd.read_csv(csv_dict[dataset_name][-1])
+    csv_instance_per_obj = pd.read_csv([f for f in csv_dict[dataset_name] if f.__contains__("per_obj_stats")][0]) #pd.read_csv(csv_dict[dataset_name][0])
 
     # Calculate object diameter from area, assuming objects are circular
     csv_instance_per_obj["GT_diameter_from_area"] = 2 * np.sqrt(
@@ -949,8 +956,8 @@ def generate_instance_wt_treatment_bar_plot(
     )
 
     # Import CSVs
-    csv_instance_summary = pd.read_csv(csv_dict[dataset_name][-1])
-    csv_instance_per_obj = pd.read_csv(csv_dict[dataset_name][0])
+    csv_instance_summary = pd.read_csv([f for f in csv_dict[dataset_name] if f.__contains__("summary_stats")][0]) # pd.read_csv(csv_dict[dataset_name][-1])
+    csv_instance_per_obj = pd.read_csv([f for f in csv_dict[dataset_name] if f.__contains__("per_obj_stats")][0]) #pd.read_csv(csv_dict[dataset_name][0])
 
     # ID the treatment CSVs
     csv_instance_summary["Subset"] = csv_instance_summary["File_name"].map(
@@ -1110,7 +1117,7 @@ def generate_throughput_line_plot(
     folder_path: str,
     dataset_name_list: list,
     fig_name: str,
-    metrics_csv_path: str,
+    original_folder_name: Optional[str] = "OG",
     round_datasets: Optional[list] = [],
     output_path: Optional[str] = None,
     palette: Optional[list] = [
@@ -1150,12 +1157,13 @@ def generate_throughput_line_plot(
 
     # Get dictionary of CSVs in folder
     csv_dict = get_csv_dict(folder_path)
-
+    
     # Read CSVs
     for dataset_name in dataset_name_list:
         if dataset_name in csv_dict.keys():
             # Load dataset summary csv
             csv_instance_summary = pd.read_csv(csv_dict[dataset_name][0])
+            csv_seg_summary = [f for f in csv_dict[dataset_name] if f.__contains__("summary_stats")][0]
 
             # Calculate mean diameter per sampling and use it to calculate % Diameter per Pixel
             if dataset_name in round_datasets:
@@ -1180,7 +1188,7 @@ def generate_throughput_line_plot(
             ).round(1)
 
             # Calculate microscopeFOV from original resolution dataset
-            mic_FOV_area = microscope_FOV_area(metrics_csv_path, dataset_name)
+            mic_FOV_area = microscope_FOV_area(csv_seg_summary, original_folder_name=original_folder_name)
 
             # Calculate the objects per FOV for each sampling
             objs_per_FOV_df = obj_per_microscope_FOV(

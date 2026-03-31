@@ -1,0 +1,4 @@
+,sample,sampling,img_dimensions
+0,Deepbacs_Semantic_Segmentation,OG,"(1024, 1024)"
+1,Deepbacs_Semantic_Segmentation,downsampling_2,"(512, 512)"
+2,Deepbacs_Semantic_Segmentation,upsampling_2,"(2048, 2048)"

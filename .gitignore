@@ -164,6 +164,9 @@ Data/Staph
 .gitignore
 Examples/Processed
 Examples/data2rescale/Processed
-Examples/analysis_results/*.csv
+Examples/segmentation_results/Deepbacs_Semantic_Segmentation/Results
+Examples/segmentation_results/Saureus_instance_segmentation/Results
+Examples/segmentation_results/Deepbacs_Semantic_Segmentation/Results*
+Examples/segmentation_results/Saureus_instance_segmentation/Results*
 Notebooks/testing_reescale4dl.ipynb
 .idea

@@ -8,13 +8,7 @@ from ..utils import get_csv_dict
 
 def microscope_FOV_area(
     path_metrics_csv: str,
-    dataset_name: str,
-    dataset_name_match_dict: Optional[dict] = {
-        "Deepbacs_instance": "deepbacs",
-        "Saureus": "saureus",
-        "Saureus_WT_PC190723": "saureus_mix",
-        "Worm_instance": "worm",
-    },
+    original_folder_name: Optional[str] = "OG"
 ) -> float:
     """
     Function to calculate the area of the microscope FOV.
@@ -31,20 +25,18 @@ def microscope_FOV_area(
     pdf_metrics_csv = pd.read_csv(path_metrics_csv)
 
     # Filter dataframe for specific dataset and OG sampling
-    pdf_metrics_csv = pdf_metrics_csv[
-        pdf_metrics_csv["sample"] == dataset_name_match_dict[dataset_name]
-    ]
-    pdf_metrics_csv = pdf_metrics_csv[pdf_metrics_csv["sampling"] == "og"]
+    pdf_metrics_csv = pdf_metrics_csv[pdf_metrics_csv["Grand_Parent_Folder"] == original_folder_name]
+  
 
     # Convert string to values and calculate FOV area from Image dimensions
-    pdf_metrics_csv["img_dimensions"] = pdf_metrics_csv["img_dimensions"].apply(
+    pdf_metrics_csv["img_dimensions"] = pdf_metrics_csv["Dimensions"].apply(
         ast.literal_eval
     )
     pdf_metrics_csv["FOV_area"] = pdf_metrics_csv["img_dimensions"].apply(
-        lambda x: x[0] * x[1]
+        lambda x: np.prod(x)
     )
 
-    return pdf_metrics_csv["FOV_area"].values[0]
+    return np.mean(pdf_metrics_csv["FOV_area"].values)
 
 
 def obj_per_microscope_FOV(
@@ -57,7 +49,7 @@ def obj_per_microscope_FOV(
     Function to calculate the number of objects per microscope FOV.
 
     Args:
-        path_metrics_csv (str): path to the csv with the metrics.
+        microscope_FOV (str): path to the csv with the metrics.
         folder_path (str): path to the folder with the csvs.
         dataset_name (str): dataset instance name.
         save_csv (bool): whether to save the values in a csv.
@@ -72,7 +64,7 @@ def obj_per_microscope_FOV(
     csv_dict = get_csv_dict(folder_path)
 
     # Read CSVs
-    per_obj_csv = pd.read_csv(csv_dict[dataset_name][0])
+    per_obj_csv = pd.read_csv([f for f in csv_dict[dataset_name] if f.__contains__("per_obj")][0]) # pd.read_csv(csv_dict[dataset_name][0])
 
     # Calculate median and mean values of GT area per FOV
     px_per_obj["GT_area_median"] = per_obj_csv.groupby(

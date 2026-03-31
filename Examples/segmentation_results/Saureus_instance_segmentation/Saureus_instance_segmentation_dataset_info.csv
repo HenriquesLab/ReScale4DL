@@ -1,0 +1,4 @@
+,sample,sampling,img_dimensions
+0,Saureus_instance_segmentation,OG,"(2430, 2430)"
+1,Saureus_instance_segmentation,downsampling_2,"(1215, 1215)"
+2,Saureus_instance_segmentation,downsampling_4,"(607, 607)"

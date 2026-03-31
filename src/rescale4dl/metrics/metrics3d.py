@@ -80,9 +80,11 @@ def morphology_3d(
         # Remaining sub directories are the ones to calculate properties for
         else:
             print("Calculating properties for " + sub_dir)
+            reset_sampling_dir_list = False
             if sampling_dir_list is None:
                 sampling_dir_list = [i for i in os.listdir(curr_dir) if
                                      os.path.isdir(os.path.join(curr_dir, i))]
+                reset_sampling_dir_list = True
             # Create folder to store results if it doesn't exist
             result_dir = os.path.join(curr_dir, "Results")
             base_result_dir = result_dir
@@ -118,6 +120,8 @@ def morphology_3d(
                     result_dir=result_dir,
                     sampling_dir_list=sampling_dir_list,
                 )
+            if reset_sampling_dir_list:
+                sampling_dir_list = None
 
     # Print total time taken
     total_time = strftime("%H:%M:%S", gmtime(perf_counter() - begin_time))
@@ -185,6 +189,7 @@ def per_object_statistics_3d(
     pred_px_cov_list = []
     IoU_list = []
     f1_score_list = []
+    image_dimensions = []
 
     # Lists to store the per GT volume per object statistics
     GT_min_diameter = []
@@ -248,7 +253,7 @@ def per_object_statistics_3d(
                     f"Prediction to match GT shape."
                 )
                 pred_vol = pad_br_with_zeroes_3d(GT_vol, pred_vol)
-
+            image_dimensions.append(list(GT_img.shape))
             # Check if the shape of the GT and Prediction volumes are the same
             if GT_vol.shape == pred_vol.shape:
                 # Relabel to consecutive labels
@@ -477,6 +482,7 @@ def per_object_statistics_3d(
             .reset_index()
         )
         summary_df.drop(["GT_Label", "Prediction_Label"], axis=1, inplace=True)
+        summary_df["Dimensions"] = image_dimensions
 
         count_df["Grand_Parent_Folder"] = folder_for_count
         count_df["File_name"] = file_for_count

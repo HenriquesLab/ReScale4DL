@@ -78,9 +78,13 @@ def morphology(
         # Remaining sub directories are the ones to calculate properties for
         else:
             print("Calculating properties for " + sub_dir)
+            reset_sampling_dir_list = False
             if sampling_dir_list is None:
+                
                 sampling_dir_list = [i for i in os.listdir(curr_dir) if
                                      os.path.isdir(os.path.join(curr_dir, i))]
+                reset_sampling_dir_list = True
+            print(f"Sampling folders to analyze: {sampling_dir_list}")
             # Create folder to store results if it doesn't exist, if it exists make new one
             result_dir = os.path.join(curr_dir, "Results")
             base_result_dir = result_dir
@@ -116,6 +120,8 @@ def morphology(
                     result_dir=result_dir,
                     sampling_dir_list=sampling_dir_list,
                 )
+            if reset_sampling_dir_list:
+                sampling_dir_list = None
 
     # Print total time taken
     total_time = strftime("%H:%M:%S", gmtime(perf_counter() - begin_time))
@@ -189,6 +195,7 @@ def per_object_statistics(
 
     # Lists to store the per image statistics
     file_for_count = []
+    image_dimensions = []
     folder_for_count = []
     true_positives_count = []
     false_negatives_count = []
@@ -233,7 +240,7 @@ def per_object_statistics(
                     f"{file} from {GP_folder} has shape {GT_img.shape} in GT and {pred_img.shape} in Prediction. Padded Prediction to match GT shape."
                 )
                 pred_img = pad_br_with_zeroes(GT_img, pred_img)
-
+            image_dimensions.append(list(GT_img.shape))
             # Check if the shape of the GT and Prediction images are the same
             if GT_img.shape == pred_img.shape:
                 # Calculate the number of objects in each image and remap the labels
@@ -521,7 +528,7 @@ def per_object_statistics(
         .agg("mean")
         .reset_index()
     )
-
+    
     summary_df.drop(["GT_Label", "Prediction_Label"], axis=1, inplace=True)
 
     count_df["Grand_Parent_Folder"] = folder_for_count
@@ -536,6 +543,8 @@ def per_object_statistics(
         count_df, on=["Grand_Parent_Folder", "File_name"], how="left"
     )
 
+    summary_df["Dimensions"] = image_dimensions
+    
     # Calculate summary Sensitivity/Recall and Accuracy
     summary_df["Sensitivity"] = summary_df["true_positives_count"] / (
         summary_df["true_positives_count"]
@@ -649,8 +658,8 @@ def semantic_statistics(
                 GT_count = np.max(GT_img)
                 pred_count = np.max(pred_img)
 
-                # Check the number of labels in GT and Prediction, if above 2 skip semantic analysis
-                if GT_count != 2 or pred_count != 2 or GT_count != pred_count:
+                # Check the number of labels in GT and Prediction, if above 3 skip semantic analysis
+                if GT_count > 3 or pred_count > 3 or GT_count != pred_count:
                     continue
 
                 # Print the number of objects in each image
@@ -659,7 +668,7 @@ def semantic_statistics(
                 )
 
                 # Loop through the 2 labels
-                for obj in range(1, 3):
+                for obj in range(1, GT_count+1):
                     # Extract the object from the GT
                     GT_obj = GT_img == obj
                     pred_obj = pred_img == obj
@@ -684,7 +693,7 @@ def semantic_statistics(
                         iou_1 = iou_score
                         f1_1 = f1_score
 
-                    if obj == 2:
+                    if obj > 1:
                         # Add object information to lists
                         GP_folder_list.append(GP_folder)
                         file_name_list.append(file)
@@ -745,6 +754,7 @@ def binary_mask_statistics(
         "downsampling_8",
         "downsampling_16",
     ],
+    max_samples_to_save: int = 3,
 ) -> pd.DataFrame:
     """
     Calculate the IoU, f1 score, and other statistics for a binary mask image from the semantic segmentation GT and Prediction images.
@@ -768,6 +778,9 @@ def binary_mask_statistics(
     pred_label_list = []
     IoU_list = []
     f1_score_list = []
+    
+    # Track how many examples we have saved per sampling folder
+    saved_examples_per_folder: Dict[str, int] = {}
 
     # Loop through the parent folders
     for GP_folder in sorted(sampling_dir_list):
@@ -795,6 +808,9 @@ def binary_mask_statistics(
         # Get the list of the paired files (both GT and Prediction .tif files)
         paired_files = list(set(GT_file_list) & set(pred_file_list))
 
+        # Init saved counter for this folder
+        saved_examples_per_folder.setdefault(GP_folder, 0)
+
         # Loop through the paired files
         for file in paired_files:
             GT_img = ski.io.imread(os.path.join(GT_path, file))
@@ -810,13 +826,13 @@ def binary_mask_statistics(
 
             # Check if the shape of the GT and Prediction images are the same
             if GT_img.shape == pred_img.shape:
-                # Calculate the number of objects in each image and remap the labels
-                GT_count = np.max(GT_img)
-                pred_count = np.max(pred_img)
+                # # Calculate the number of objects in each image and remap the labels
+                # GT_count = np.max(GT_img)
+                # pred_count = np.max(pred_img)
 
-                # Check the number of labels in GT and Prediction, if above 2 skip semantic analysis
-                if GT_count != 2 or pred_count != 2 or GT_count != pred_count:
-                    continue
+                # # Check the number of labels in GT and Prediction, if above 2 skip semantic analysis
+                # if GT_count != 2 or pred_count != 2 or GT_count != pred_count:
+                #     continue
 
                 # Print the number of objects in each image
                 print(
@@ -834,6 +850,14 @@ def binary_mask_statistics(
 
                 f1_score = skl.f1_score(GT_obj, pred_obj, average="micro")
 
+                # pixel-level confusion:
+                # TP: GT = 1, Pred = 1
+                # FP: GT = 0, Pred = 1
+                # FN: GT = 1, Pred = 0
+                TP_mask = GT_obj & pred_obj
+                FP_mask = (~GT_obj) & pred_obj
+                FN_mask = GT_obj & (~pred_obj)
+
                 # Add object information to lists
                 GP_folder_list.append(GP_folder)
                 file_name_list.append(file)
@@ -841,6 +865,32 @@ def binary_mask_statistics(
                 pred_label_list.append("mask")
                 IoU_list.append(iou_score)
                 f1_score_list.append(f1_score)
+
+                # Save example TP/FP/FN images for a few samples
+                if saved_examples_per_folder[GP_folder] < max_samples_to_save:
+                    base_name = file.split(".")[0]
+                    ski.io.imsave(
+                        os.path.join(
+                            res_pred_dir, base_name + "_TP_binary.tif"
+                        ),
+                        TP_mask.astype(np.uint8),
+                        check_contrast=False,
+                    )
+                    ski.io.imsave(
+                        os.path.join(
+                            res_pred_dir, base_name + "_FP_binary.tif"
+                        ),
+                        FP_mask.astype(np.uint8),
+                        check_contrast=False,
+                    )
+                    ski.io.imsave(
+                        os.path.join(
+                            res_pred_dir, base_name + "_FN_binary.tif"
+                        ),
+                        FN_mask.astype(np.uint8),
+                        check_contrast=False,
+                    )
+                    saved_examples_per_folder[GP_folder] += 1
 
             else:
                 print(
