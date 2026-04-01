@@ -199,7 +199,7 @@ def compute_statistical_analysis(ANALYSIS_DIR,
     if vmin > vmax:
         vmin = vmax       
         
-    formatted_annotations = pval_matrix.applymap(lambda x: format_p_value(x) if pd.notna(x) else "NaN")
+    formatted_annotations = pval_matrix.map(lambda x: format_p_value(x) if pd.notna(x) else "NaN")
     plt.figure(figsize=(5,5))
     plt.rcParams.update({'font.size': 5})
     sns.heatmap(log_matrix, cmap='Oranges', annot=formatted_annotations,
