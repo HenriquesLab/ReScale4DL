@@ -6,9 +6,6 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 import pypdf  # type: ignore
 import re
-import matplotlib.pyplot as plt  # type: ignore
-from matplotlib.ticker import MaxNLocator  # type: ignore
-import seaborn as sns  # type: ignore
 import skimage as ski  # type: ignore
 from skimage.measure._regionprops_utils import perimeter  # type: ignore
 from sklearn import metrics as skl  # type: ignore
@@ -37,6 +34,7 @@ def morphology(
     run_per_object_stats: Optional[bool] = True,
     run_semantic_stats: Optional[bool] = True,
     run_binary_mask_stats: Optional[bool] = True,
+    save_images: bool = True
 ) -> None:
     """
     Calculate the properties for each object in each image in the input directory.
@@ -105,13 +103,14 @@ def morphology(
                     directory=curr_dir,
                     result_dir=result_dir,
                     sampling_dir_list=sampling_dir_list,
+                    save_images=save_images
                 )
 
             if run_semantic_stats:
                 semantic_statistics(
                     directory=curr_dir,
                     result_dir=result_dir,
-                    sampling_dir_list=sampling_dir_list,
+                    sampling_dir_list=sampling_dir_list
                 )
 
             if run_binary_mask_stats:
@@ -119,6 +118,7 @@ def morphology(
                     directory=curr_dir,
                     result_dir=result_dir,
                     sampling_dir_list=sampling_dir_list,
+                    save_images=save_images
                 )
             if reset_sampling_dir_list:
                 sampling_dir_list = None
@@ -145,6 +145,7 @@ def per_object_statistics(
         "downsampling_8",
         "downsampling_16",
     ],
+    save_images: bool = True
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Calculate the IoU, f1 score, and other statistics for each object in the image.
@@ -421,32 +422,32 @@ def per_object_statistics(
 
                 # Store false positives in the array image
                 false_positives[pred_remap != 0] = pred_remap[pred_remap != 0]
-
-                # Save the images
-                ski.io.imsave(
-                    os.path.join(
-                        res_pred_dir,
-                        file.split(".")[0] + "_true_positives.tif",
-                    ),
-                    true_positives,
-                    check_contrast=False,
-                )
-                ski.io.imsave(
-                    os.path.join(
-                        res_pred_dir,
-                        file.split(".")[0] + "_false_negatives.tif",
-                    ),
-                    false_negatives,
-                    check_contrast=False,
-                )
-                ski.io.imsave(
-                    os.path.join(
-                        res_pred_dir,
-                        file.split(".")[0] + "_false_positives.tif",
-                    ),
-                    false_positives,
-                    check_contrast=False,
-                )
+                if save_images:
+                    # Save the images
+                    ski.io.imsave(
+                        os.path.join(
+                            res_pred_dir,
+                            file.split(".")[0] + "_true_positives.tif",
+                        ),
+                        true_positives,
+                        check_contrast=False,
+                    )
+                    ski.io.imsave(
+                        os.path.join(
+                            res_pred_dir,
+                            file.split(".")[0] + "_false_negatives.tif",
+                        ),
+                        false_negatives,
+                        check_contrast=False,
+                    )
+                    ski.io.imsave(
+                        os.path.join(
+                            res_pred_dir,
+                            file.split(".")[0] + "_false_positives.tif",
+                        ),
+                        false_positives,
+                        check_contrast=False,
+                    )
 
                 # Get summary statistics
                 file_for_count.append(file)
@@ -588,7 +589,7 @@ def semantic_statistics(
         "downsampling_4",
         "downsampling_8",
         "downsampling_16",
-    ],
+    ]
 ) -> pd.DataFrame:
     """
     Calculate the IoU, f1 score, and other statistics for each label in the semantic segmentation GT and Prediction images. Only for 2 labels + background.
@@ -755,6 +756,7 @@ def binary_mask_statistics(
         "downsampling_16",
     ],
     max_samples_to_save: int = 3,
+    save_images: bool = True
 ) -> pd.DataFrame:
     """
     Calculate the IoU, f1 score, and other statistics for a binary mask image from the semantic segmentation GT and Prediction images.
@@ -867,7 +869,7 @@ def binary_mask_statistics(
                 f1_score_list.append(f1_score)
 
                 # Save example TP/FP/FN images for a few samples
-                if saved_examples_per_folder[GP_folder] < max_samples_to_save:
+                if save_images and saved_examples_per_folder[GP_folder] < max_samples_to_save:
                     base_name = file.split(".")[0]
                     ski.io.imsave(
                         os.path.join(

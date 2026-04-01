@@ -22,6 +22,7 @@ def analyse(
     run_per_object_stats: bool = True,
     run_semantic_stats: bool = True,
     run_binary_mask_stats: bool = True,
+    save_images: bool = True,
 ) -> None:
     """
     High-level entry point to run morphology analysis on 2D or 3D data.
@@ -46,6 +47,7 @@ def analyse(
             run_per_object_stats=run_per_object_stats,
             run_semantic_stats=run_semantic_stats,
             run_binary_mask_stats=run_binary_mask_stats,
+            save_volumes=save_images,
         )
     else:
         morphology_2d(
@@ -55,4 +57,5 @@ def analyse(
             run_per_object_stats=run_per_object_stats,
             run_semantic_stats=run_semantic_stats,
             run_binary_mask_stats=run_binary_mask_stats,
+            save_images=save_images
         )
