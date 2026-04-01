@@ -1267,17 +1267,20 @@ def generate_throughput_line_plot(
         )
 
 
-def plot_data_distributions(df, quantitative_column, categorical_columns):
+def plot_data_distributions(ANALYSIS_DIR, DATASET, quantitative_column, categorical_columns, filename="summary_stats.csv"):
     """
     Plot histograms and Q-Q plots for subgroups defined by multiple categorical variables.
     
     Args:
-    df: pandas DataFrame containing the data
+    ANALYSIS_DIR: Base directory where the data is stored
+    DATASET: Name of the dataset to analyze
     quantitative_column: Name of the column containing the quantitative data to plot
     categorical_columns: List of column names defining the hierarchy of subgroups
+    filename: footer of the CSV file containing the data (default: "summary_stats.csv")
     """
-
-    plt.rcParams.update({'font.size': 8})
+    PATH2FILE = os.path.join(ANALYSIS_DIR, f"{DATASET}/Results/{DATASET}_{filename}")
+    df = pd.read_csv(PATH2FILE)
+    plt.rcParams.update({'font.size': 5})
     
     # Get all unique combinations across categorical columns
     combos_df = df[categorical_columns].drop_duplicates()
@@ -1290,7 +1293,7 @@ def plot_data_distributions(df, quantitative_column, categorical_columns):
     
     n_cols = 2  # Histogram + Q-Q
     n_rows = n_groups
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(12, 3 * n_rows))
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(6, 1.5 * n_rows))
     if n_rows == 1:
         axes = axes.reshape(1, -1)
     
@@ -1315,6 +1318,22 @@ def plot_data_distributions(df, quantitative_column, categorical_columns):
         stats.probplot(data, dist="norm", plot=axes[i, 1])
         axes[i, 1].set_title(' | '.join(title_parts) + ' - Q-Q Plot')
     
-    fig.suptitle(f'Data Distributions by {quantitative_column}', fontsize=12)
+    fig.suptitle(f'Data Distributions by {quantitative_column}', fontsize=8)
     plt.tight_layout()
+    os.makedirs(os.path.join(ANALYSIS_DIR, f"{DATASET}/Plots"), exist_ok=True)
+    plt.savefig(
+        os.path.join(ANALYSIS_DIR, f"{DATASET}/Plots/{DATASET}_{quantitative_column}_distributions_{filename}.png"),
+        bbox_inches="tight",
+        pad_inches=0.2,
+        dpi=300,
+        transparent=True,
+    )
+    plt.savefig(
+        os.path.join(ANALYSIS_DIR, f"{DATASET}/Plots/{DATASET}_{quantitative_column}_distributions_{filename}.pdf"),
+        bbox_inches="tight",
+        pad_inches=0.2,
+        dpi=300,
+        transparent=True,
+    )
+    plt.show()
     plt.show()
