@@ -1,9 +1,5 @@
 import pandas as pd
 from scipy import stats
-import matplotlib.pyplot as plt
-import seaborn as sns
-    
-
 
 def choose_statistical_test(group1, group2):
     """
@@ -30,7 +26,7 @@ def choose_statistical_test(group1, group2):
     else:  # At least one group is not normally distributed
         return "Kolmogorov-Smirnov"
 
-def perform_statistical_test(group1, group2, test_type):
+def run_statistical_test(group1, group2, test_type):
     """
     Perform the specified statistical test on two groups of data.
     
@@ -50,7 +46,7 @@ def perform_statistical_test(group1, group2, test_type):
         return stats.ks_2samp(group1, group2)
     
 
-def perform_statistical_analysis(df, quantitative_column, categorical_columns,
+def compute_statistical_analysis(df, quantitative_column, categorical_columns,
                                test_type="Kolmogorov-Smirnov", choose_test="Manual"):
     """
     Perform pairwise statistical analysis on groups defined by multiple categorical variables.
@@ -95,7 +91,7 @@ def perform_statistical_analysis(df, quantitative_column, categorical_columns,
             if choose_test == "Automatic":
                 test_type = choose_statistical_test(data1, data2)
             
-            statistic, p_value = perform_statistical_test(data1, data2, test_type)
+            statistic, p_value = run_statistical_test(data1, data2, test_type)
             
             # Format hierarchy paths for output
             path1 = ' | '.join([f"{categorical_columns[j]}: {combo1[j]}" for j in range(len(categorical_columns))])
@@ -111,54 +107,3 @@ def perform_statistical_analysis(df, quantitative_column, categorical_columns,
     
     return pd.DataFrame(results)
 
-def plot_data_distributions(df, quantitative_column, categorical_columns):
-    """
-    Plot histograms and Q-Q plots for subgroups defined by multiple categorical variables.
-    
-    Args:
-    df: pandas DataFrame containing the data
-    quantitative_column: Name of the column containing the quantitative data to plot
-    categorical_columns: List of column names defining the hierarchy of subgroups
-    """
-
-    plt.rcParams.update({'font.size': 8})
-    
-    # Get all unique combinations across categorical columns
-    combos_df = df[categorical_columns].drop_duplicates()
-    combinations = list(combos_df.itertuples(index=False, name=None))
-    
-    n_groups = len(combinations)
-    if n_groups == 0:
-        print("No data found.")
-        return
-    
-    n_cols = 2  # Histogram + Q-Q
-    n_rows = n_groups
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(12, 3 * n_rows))
-    if n_rows == 1:
-        axes = axes.reshape(1, -1)
-    
-    for i, combo in enumerate(combinations):
-        # Create mask for this combination
-        mask = pd.Series([True] * len(df), index=df.index)
-        for j, col in enumerate(categorical_columns):
-            mask &= (df[col] == combo[j])
-        
-        data = df.loc[mask, quantitative_column].dropna()
-        if len(data) == 0:
-            axes[i, 0].text(0.5, 0.5, 'No data', ha='center', va='center', transform=axes[i, 0].transAxes)
-            axes[i, 1].text(0.5, 0.5, 'No data', ha='center', va='center', transform=axes[i, 1].transAxes)
-            continue
-        
-        # Histogram
-        sns.histplot(data, kde=True, ax=axes[i, 0])
-        title_parts = [f"{categorical_columns[j]}: {combo[j]}" for j in range(len(categorical_columns))]
-        axes[i, 0].set_title(' | '.join(title_parts) + ' - Histogram')
-        
-        # Q-Q plot
-        stats.probplot(data, dist="norm", plot=axes[i, 1])
-        axes[i, 1].set_title(' | '.join(title_parts) + ' - Q-Q Plot')
-    
-    fig.suptitle(f'Data Distributions by {quantitative_column}', fontsize=12)
-    plt.tight_layout()
-    plt.show()
