@@ -8,7 +8,7 @@ import seaborn as sns
 from skimage.io import imread
 import os
 from typing import List, Optional, Tuple, Dict, Literal, Union
-from rescale4dl.utils import get_csv_dict
+from rescale4dl.utils import get_csv_dict, parse_scaling_3d
 from rescale4dl.metrics.fov_estimates import microscope_FOV_area, obj_per_microscope_FOV
 
 
@@ -54,8 +54,13 @@ def plot_segmentation_example(
     binary_results_dir = os.path.join(input_dir, dataset, "Results", scaling)
 
     # Pick first .tif in GT folder
-    example_image = [f for f in os.listdir(binary_results_dir) if f.__contains__("TP_binary.tif")][0]
-    
+    try:
+        example_image = [f for f in os.listdir(binary_results_dir) if f.__contains__("TP_binary.tif")][0]
+    except IndexError:
+        print("No images found in the binary results directory.")
+        print("Check if save_images = True in the analyse function of ReScale4DL.")
+        return
+
     example_stem = example_image.rsplit("_TP_binary.tif", 1)[0]
 
     # OBJECT-LEVEL paths (your original 5)
@@ -216,8 +221,7 @@ def generate_binary_semantic_box_plot(
     # Import CSVs
     csv_BN = pd.read_csv([f for f in csv_dict[dataset_SS] if f.__contains__("binary_mask")][0]) #pd.read_csv(csv_dict[dataset_SS][1])
     csv_SS = pd.read_csv([f for f in csv_dict[dataset_SS] if f.__contains__("semantic")][0]) # pd.read_csv(csv_dict[dataset_SS][2])
-    path_instance_summary = [f for f in csv_dict[dataset_name] if f.__contains__("summary_stats")][0]
-    csv_instance_summary = pd.read_csv(path_instance_summary)
+    
 
     # Calculate mean diameter per sampling and use it to calculate % Diameter per Pixel
     mean_diam_sampling = mean_obj_diam_dict(dataset_name, csv_dict)
@@ -245,7 +249,6 @@ def generate_binary_semantic_box_plot(
     csv_SS = csv_SS[csv_SS["GT_Label"] == "ALL"]
 
     # Add a column to identify the source of the data
-    csv_instance_summary["Source"] = "Instance Summary"
     csv_BN["Source"] = "Binary Mask"
     csv_SS["Source"] = "Semantic\nSegmentation"
 
@@ -254,6 +257,11 @@ def generate_binary_semantic_box_plot(
 
     # If adding throughput line to plot
     if thoughput_plot:
+        # Add a column to identify the source of the data
+        path_instance_summary = [f for f in csv_dict[dataset_name] if f.__contains__("summary_stats")][0]
+        csv_instance_summary = pd.read_csv(path_instance_summary)
+
+        csv_instance_summary["Source"] = "Instance Summary"
         csv_instance_summary["Mean_diameter_per_sampling_GT"] = (
             csv_instance_summary["Grand_Parent_Folder"].map(mean_diam_sampling)
         )
@@ -331,6 +339,192 @@ def generate_binary_semantic_box_plot(
         # y-axis log scale and labels
         plt.yscale("log")
         plt.ylabel("Throughput [N/\u03c4]")
+
+    # Save the plot
+    if output_path is not None:
+        plt.savefig(
+            f"{output_path}/Fig_{fig_name}_{dataset_name}_{y_axis}.svg",
+            bbox_inches="tight",
+            pad_inches=0.2,
+        )
+        plt.savefig(
+            f"{output_path}/Fig_{fig_name}_{dataset_name}_{y_axis}.png",
+            bbox_inches="tight",
+            pad_inches=0.2,
+            dpi=300,
+            transparent=True,
+        )
+        plt.savefig(
+            f"{output_path}/Fig_{fig_name}_{dataset_name}_{y_axis}.pdf",
+            bbox_inches="tight",
+            pad_inches=0.2,
+            dpi=300,
+            transparent=True,
+        )
+
+def generate_binary_semantic_box_plot_3D(
+    folder_path: str,
+    dataset_SS: str,
+    dataset_name: str,
+    fig_name: str,
+    y_axis: str,
+    thoughput_plot: Optional[bool] = False,
+    original_folder_name: Optional[str] = "OG",
+    y_axis_2: Optional[str] = None,
+    output_path: Optional[str] = None,
+    color_line: Optional[str] = "#d62728",
+    palette: Optional[list] = ["#1f77b4", "#ff9f9b"],
+    plot_type: Literal["boxplot", "barplot"] = "barplot",
+    fig_width: Optional[int] = 13,
+    aspect_ratio: Optional[float] = 5,
+) -> None:
+    """
+    Generate a box plot of the IoU of the binary mask and semantic segmentation images.
+    It will have no title and no legend.
+    x axis is the % Diameter per Pixel.
+
+    Args:
+        folder_path (str): The path to the folder containing the csv files.
+        dataset_SS (str): The dataset name for the semantic segmentation csv files.
+        dataset_name (str): The dataset name for the instance segmentation csv files.
+        fig_name (str): The name of the figure.
+        y_axis (str): The column to use for the y-axis.
+        output_path (str): The path to the folder to save the figures.
+        palette (Optional[list]): The color palette for the plot, list of hexcodes.
+        fig_width (Optional[int]): The width of the figure.
+        aspect_ratio (Optional[float]): The aspect ratio of the plot.
+    """
+    # Get the csv files
+    csv_dict = get_csv_dict(folder_path)
+
+    # Import CSVs
+    csv_BN = pd.read_csv([f for f in csv_dict[dataset_SS] if f.__contains__("binary_mask")][0]) #pd.read_csv(csv_dict[dataset_SS][1])
+    csv_SS = pd.read_csv([f for f in csv_dict[dataset_SS] if f.__contains__("semantic")][0]) # pd.read_csv(csv_dict[dataset_SS][2])
+    
+    csv_BN['scaling_info'] = csv_BN['Grand_Parent_Folder'].apply(parse_scaling_3d)
+    #csv_BN['direction'] = csv_BN.apply(lambda row: row['scaling_info']['direction'] if row['scaling_info'] else None, axis=1)
+    csv_BN['type_label'] = csv_BN.apply(lambda row: row['scaling_info']['type'] if row['scaling_info'] else None, axis=1)
+    csv_BN['scaling_factor'] = csv_BN.apply(lambda row: -row['scaling_info']['factor'] if row['scaling_info']['direction'] == 'down' else row['scaling_info']['factor'], axis=1)
+    unique_types = sorted([t for t in csv_BN['type_label'].unique() if t != 'Original'])
+    n_types = len(unique_types)
+
+    # Input variables
+    x_axis = 'scaling_factor'
+   
+    # Filter the dataframe
+    csv_SS = csv_SS[csv_SS["GT_Label"] == "ALL"]
+
+    # Add a column to identify the source of the data
+    csv_BN["Source"] = "Binary Mask"
+    csv_SS["Source"] = "Semantic\nSegmentation"
+
+    # Concatenate the dataframes
+    dataframe = pd.concat([csv_BN, csv_SS], axis=0, ignore_index=True)
+
+    # If adding throughput line to plot
+    if thoughput_plot:
+        # Add a column to identify the source of the data
+        try:    
+            path_instance_summary = [f for f in csv_dict[dataset_name] if f.__contains__("summary_stats")][0]
+            csv_instance_summary = pd.read_csv(path_instance_summary)
+        except IndexError:
+            print(f"No summary_stats.csv with object diameter information found for dataset {dataset_name} Throughput plot will be skipped.")
+            thoughput_plot = False
+    if thoughput_plot:
+        # Calculate mean diameter per sampling and use it to calculate % Diameter per Pixel
+        mean_diam_sampling = mean_obj_diam_dict(dataset_name, csv_dict)
+
+        csv_instance_summary["Source"] = "Instance Summary"
+        csv_instance_summary["Mean_diameter_per_sampling_GT"] = (
+            csv_instance_summary["Grand_Parent_Folder"].map(mean_diam_sampling)
+        )
+        csv_instance_summary["% Diameter per Pixel"] = (
+            (100 / csv_instance_summary["Mean_diameter_per_sampling_GT"])
+            .round(0)
+            .astype(int)
+            .astype(str)
+        )
+         
+
+    sns.set_context("talk")
+    fig, ax1 = plt.subplots(1, n_types, figsize=(fig_width, fig_width / aspect_ratio), sharey=True)
+    plt.rcParams.update({'font.size': 3})
+    df_original = dataframe[dataframe['type_label'] == "Original"].copy()
+    for i, t in enumerate(unique_types):
+        ax = ax1[i] if n_types > 1 else ax1
+        df_type = dataframe[dataframe['type_label'] == t].copy()
+        df_type = pd.concat([df_type, df_original], axis=0, ignore_index=True)  # Add original data to the current type dataframe
+        # Arguments for plotting
+        if plot_type == "boxplot":
+            plot_args_box = {
+                "data": df_type,
+                "x": x_axis,
+                "y": y_axis,
+                "hue": "Source",
+                "palette": palette,
+                "dodge": True,
+                "linecolor": "black",
+                "linewidth": 2,
+                "whis": 1.5,  # 1.5 IQR
+                "legend": False,
+                "ax": ax,
+            }
+        elif plot_type == "barplot":
+            plot_args_box = {
+                "data": df_type,
+                "x": x_axis,
+                "y": y_axis,
+                "hue": "Source",
+                "palette": palette,
+                "dodge": True,
+                "linewidth": 2,
+                "errorbar": ("ci", 95),
+                "legend": False,
+                "ax": ax,
+            }
+        # Plot
+        plot = sns.barplot(**plot_args_box)
+        # Grids and limits
+        ax.grid(axis="y", which="major")
+        ax.set_ylim(top=1)
+        ax.set_xlabel("Rescaling factor")
+        ax.set_title(t)
+
+        if thoughput_plot:
+            # Create a secondary y-axis
+            ax2 = ax.twinx()
+
+            # Calculate microscopeFOV from original resolution dataset
+            mic_FOV_area = microscope_FOV_area(path_instance_summary, original_folder_name=original_folder_name)
+
+            # Calculate the objects per FOV for each sampling
+            objs_per_FOV_df = obj_per_microscope_FOV(
+                mic_FOV_area, folder_path, dataset_name
+            )
+
+            # Merge the dataframes
+            csv_instance_summary = pd.merge(
+                csv_instance_summary,
+                objs_per_FOV_df,
+                on=["Grand_Parent_Folder", "File_name"],
+                how="left",
+            )
+
+            plot_args_line = {
+                "data": csv_instance_summary,
+                "x": x_axis,
+                "y": y_axis_2,
+                "color": color_line,
+                "linewidth": 2,
+                "errorbar": ("ci", 95),
+                "ax": ax2,
+            }
+
+            sns.lineplot(**plot_args_line)
+
+            # y-axis log scale and labels
+            plt.yscale("log")
+            plt.ylabel("Throughput [N/\u03c4]")
 
     # Save the plot
     if output_path is not None:
@@ -1267,7 +1461,11 @@ def generate_throughput_line_plot(
         )
 
 
-def plot_data_distributions(ANALYSIS_DIR, DATASET, quantitative_column, categorical_columns, filename="summary_stats.csv"):
+def plot_data_distributions(ANALYSIS_DIR,
+                            DATASET,
+                            quantitative_column,
+                            categorical_columns,
+                            filename="summary_stats.csv"):
     """
     Plot histograms and Q-Q plots for subgroups defined by multiple categorical variables.
     
@@ -1280,7 +1478,7 @@ def plot_data_distributions(ANALYSIS_DIR, DATASET, quantitative_column, categori
     """
     PATH2FILE = os.path.join(ANALYSIS_DIR, f"{DATASET}/Results/{DATASET}_{filename}")
     df = pd.read_csv(PATH2FILE)
-    plt.rcParams.update({'font.size': 5})
+    plt.rcParams.update({'font.size': 3})
     
     # Get all unique combinations across categorical columns
     combos_df = df[categorical_columns].drop_duplicates()
@@ -1293,7 +1491,8 @@ def plot_data_distributions(ANALYSIS_DIR, DATASET, quantitative_column, categori
     
     n_cols = 2  # Histogram + Q-Q
     n_rows = n_groups
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(6, 1.5 * n_rows))
+
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(6, 2 * n_rows))
     if n_rows == 1:
         axes = axes.reshape(1, -1)
     
@@ -1318,7 +1517,7 @@ def plot_data_distributions(ANALYSIS_DIR, DATASET, quantitative_column, categori
         stats.probplot(data, dist="norm", plot=axes[i, 1])
         axes[i, 1].set_title(' | '.join(title_parts) + ' - Q-Q Plot')
     
-    fig.suptitle(f'Data Distributions by {quantitative_column}', fontsize=8)
+    fig.suptitle(f'Data Distributions by {quantitative_column}', fontsize=5)
     plt.tight_layout()
     os.makedirs(os.path.join(ANALYSIS_DIR, f"{DATASET}/Plots"), exist_ok=True)
     plt.savefig(

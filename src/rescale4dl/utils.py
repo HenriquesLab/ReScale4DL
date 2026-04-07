@@ -2,7 +2,8 @@ import numpy as np
 import os
 from functools import lru_cache
 from typing import List, Dict, Optional
-
+import pandas as pd
+import re
 
 def get_csv_dict(
     main_directory: str,
@@ -479,3 +480,73 @@ def crop_with_padding(image: np.ndarray, target_shape: tuple) -> np.ndarray:
         h = np.uint16(h)
         output = im[h : h + target_shape[0], w : w + target_shape[1]]
     return output
+
+
+def parse_scaling_3d(folder_name):
+    """
+    Parses folder name for up/downsampling info.
+    
+    Returns dict with 'direction' ('up'/'down'), 'type' ('Z'/'XY'/'XYZ'), 
+    'factor' (float), 'dims_detected' (dict), or None if no match.
+    """
+    lower_name = folder_name.lower()
+    
+    # Detect direction
+    if any(word in lower_name for word in ['upsampling', 'upsample']):
+        direction = 'up'
+    elif any(word in lower_name for word in ['downsampling', 'downsample']):
+        direction = 'down'
+    elif any(word in lower_name for word in ['OG', 'og']):
+        direction = 'original'
+    else:
+        return None
+    
+    # Regex patterns for dims/factors
+    dim_patterns = {
+        'z': r'_z_(\d+(?:\.\d+)?)',
+        'xy': r'_xy_(\d+(?:\.\d+)?)',
+        'yx': r'_yx_(\d+(?:\.\d+)?)',
+        'xyz': r'_xyz_(\d+(?:\.\d+)?)',
+        'yxz': r'_yxz_(\d+(?:\.\d+)?)',
+        'zxy': r'_zxy_(\d+(?:\.\d+)?)',
+        'zyx': r'_zyx_(\d+(?:\.\d+)?)',
+        'og': 'og',
+        'OG': 'OG'
+    }
+    
+    detected = {}
+    for dim, pattern in dim_patterns.items():
+        match = re.search(pattern, lower_name)
+        if match:
+            if dim in ['og', 'OG']:
+                detected[dim] = 1.0  # Original dataset has a factor of 1 (no scaling)
+            else:
+                detected[dim] = float(match.group(1))
+    
+    if not detected:
+        return None
+    
+    # Determine type and factor
+    dims = list(detected.keys())
+    if 'xyz' in dims or 'yxz' in dims or 'zxy' in dims or 'zyx' in dims:
+        scaling_type = 'XYZ'
+        factor = detected['xyz']
+    elif 'xy' in dims or 'yx' in dims:
+        scaling_type = 'XY'
+        factor = detected['xy']  # Assumes symmetric XY/Z
+    elif 'z' in dims:
+        scaling_type = 'Z'
+        factor = detected['z']
+    elif 'og' in dims or 'OG' in dims:
+        scaling_type = 'Original'
+        factor = 1.0
+    else:
+        scaling_type = 'unknown'
+        factor = list(detected.values())[0]
+    
+    return {
+        'direction': direction,
+        'type': scaling_type,
+        'factor': factor,
+        'dims_detected': detected
+    }
