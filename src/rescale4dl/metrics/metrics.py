@@ -80,7 +80,7 @@ def morphology(
             if sampling_dir_list is None:
                 
                 sampling_dir_list = [i for i in os.listdir(curr_dir) if
-                                     os.path.isdir(os.path.join(curr_dir, i))]
+                                     os.path.isdir(os.path.join(curr_dir, i))  and not i.startswith(".")]
                 reset_sampling_dir_list = True
             print(f"Sampling folders to analyze: {sampling_dir_list}")
             # Create folder to store results if it doesn't exist, if it exists make new one
@@ -220,10 +220,10 @@ def per_object_statistics(
 
         # Get the list of GT and Prediction .tif files
         GT_file_list = [
-            file for file in os.listdir(GT_path) if file.endswith(".tif")
+            file for file in os.listdir(GT_path) if file.endswith(".tif") and not file.startswith(".")
         ]
         pred_file_list = [
-            file for file in os.listdir(pred_path) if file.endswith(".tif")
+            file for file in os.listdir(pred_path) if file.endswith(".tif") and not file.startswith(".")
         ]
 
         # Get the list of the paired files (both GT and Prediction .tif files)
@@ -231,6 +231,7 @@ def per_object_statistics(
 
         # Loop through the paired files
         for file in paired_files:
+            print("Reading file: " + os.path.join(GT_path, file))
             GT_img = ski.io.imread(os.path.join(GT_path, file))
             pred_img = ski.io.imread(os.path.join(pred_path, file))
             start_time = perf_counter()
@@ -631,10 +632,10 @@ def semantic_statistics(
 
         # Get the list of GT and Prediction .tif files
         GT_file_list = [
-            file for file in os.listdir(GT_path) if file.endswith(".tif")
+            file for file in os.listdir(GT_path) if file.endswith(".tif") and not file.startswith(".")
         ]
         pred_file_list = [
-            file for file in os.listdir(pred_path) if file.endswith(".tif")
+            file for file in os.listdir(pred_path) if file.endswith(".tif") and not file.startswith(".")
         ]
 
         # Get the list of the paired files (both GT and Prediction .tif files)
@@ -801,10 +802,10 @@ def binary_mask_statistics(
 
         # Get the list of GT and Prediction .tif files
         GT_file_list = [
-            file for file in os.listdir(GT_path) if file.endswith(".tif")
+            file for file in os.listdir(GT_path) if file.endswith(".tif") and not file.startswith(".")
         ]
         pred_file_list = [
-            file for file in os.listdir(pred_path) if file.endswith(".tif")
+            file for file in os.listdir(pred_path) if file.endswith(".tif") and not file.startswith(".")
         ]
 
         # Get the list of the paired files (both GT and Prediction .tif files)

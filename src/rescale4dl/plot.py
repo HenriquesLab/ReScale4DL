@@ -10,7 +10,7 @@ import os
 from typing import List, Optional, Tuple, Dict, Literal, Union
 from rescale4dl.utils import get_csv_dict, parse_scaling_3d
 from rescale4dl.metrics.fov_estimates import microscope_FOV_area, obj_per_microscope_FOV
-
+import ast
 
 def _load_2d_or_3d_slice(path: str, slice_axis: int = 0, slice_index: int | None = None):
     """Load an image/volume and return a 2D slice for plotting."""
@@ -182,7 +182,7 @@ def mean_obj_diam_dict(
 
 def generate_binary_semantic_box_plot(
     folder_path: str,
-    dataset_SS: str,
+    x: str,
     dataset_name: str,
     fig_name: str,
     y_axis: str,
@@ -240,11 +240,6 @@ def generate_binary_semantic_box_plot(
         (100 / csv_SS["Mean_diameter_per_sampling_GT"]).round(0).astype(int)
     )
 
-    # Get % diameter per pixel of original image
-    og_percent = csv_SS[csv_SS["Grand_Parent_Folder"] == "OG"][
-        "% Diameter per Pixel"
-    ].values[0]
-
     # Filter the dataframe
     csv_SS = csv_SS[csv_SS["GT_Label"] == "ALL"]
 
@@ -292,9 +287,6 @@ def generate_binary_semantic_box_plot(
 
     # Plot
     plot = sns.boxplot(**plot_args_box)
-
-    # Identify the original sampling
-    plt.axvline(str(og_percent), color="black", dashes=(2, 5))
 
     # Set fixed figure width
     plt.gcf().set_size_inches(fig_width, fig_width / aspect_ratio)
@@ -608,9 +600,6 @@ def generate_semantic_gt_pred_bar_plot(
     )
 
     # Get % diameter per pixel of original image
-    og_percent = csv_instance_summary[
-        csv_instance_summary["Grand_Parent_Folder"] == "OG"
-    ]["% Diameter per Pixel"].values[0]
 
     # Normalize GT and Prediction median diameter from sampling
     csv_instance_summary["GT_diameter_median_norm"] = csv_instance_summary[
@@ -657,9 +646,6 @@ def generate_semantic_gt_pred_bar_plot(
 
     # Plot
     plot = sns.catplot(**plot_args_box)
-
-    plt.axvline(str(og_percent), color="black", dashes=(2, 5))
-
     # Set fixed figure width
     plt.gcf().set_size_inches(fig_width, plt.gcf().get_size_inches()[1])
 
@@ -777,11 +763,6 @@ def generate_instance_box_plot(
                 )
             ]
 
-    # Get % diameter per pixel of original image
-    og_percent = csv_instance_summary[
-        csv_instance_summary["Grand_Parent_Folder"] == "OG"
-    ]["% Diameter per Pixel"].values[0]
-
     sns.set_context(
         "talk",
         rc={
@@ -815,9 +796,6 @@ def generate_instance_box_plot(
 
     # Plot
     plot = sns.boxplot(**plot_args_box)
-
-    # Identify the original sampling
-    plt.axvline(str(og_percent), color="black", dashes=(2, 5))
 
     # Set fixed figure width
     plt.gcf().set_size_inches(fig_width, fig_width / aspect_ratio)
@@ -988,11 +966,6 @@ def generate_instance_gt_pred_bar_plot(
                 )
             ]
 
-    # Get % diameter per pixel of original image
-    og_percent = csv_instance_summary[
-        csv_instance_summary["Grand_Parent_Folder"] == "OG"
-    ]["% Diameter per Pixel"].values[0]
-
     # Normalize GT and Prediction median diameter from sampling
     csv_instance_summary["GT_diameter_median_norm"] = csv_instance_summary[
         "Median_GT_diameter_from_area"
@@ -1051,8 +1024,6 @@ def generate_instance_gt_pred_bar_plot(
 
     # Plot
     plot = sns.catplot(**plot_args_box)
-
-    plt.axvline(str(og_percent), color="black", dashes=(2, 5))
 
     # Set fixed figure width
     plt.gcf().set_size_inches(fig_width, plt.gcf().get_size_inches()[1])
@@ -1196,11 +1167,6 @@ def generate_instance_wt_treatment_bar_plot(
         100 / csv_instance_summary["Mean_diameter_per_sampling_GT"]
     ).round(1)
 
-    # Get % diameter per pixel of original image
-    og_percent = csv_instance_summary[
-        csv_instance_summary["Grand_Parent_Folder"] == "OG"
-    ]["% Diameter per Pixel"].values[0]
-
     # Normalize GT and Prediction median diameter from sampling
     csv_instance_summary["GT_diameter_median_norm"] = csv_instance_summary[
         "Median_GT_diameter_from_area"
@@ -1265,8 +1231,6 @@ def generate_instance_wt_treatment_bar_plot(
 
     # Plot
     plot = sns.catplot(**plot_args_box)
-
-    plt.axvline(str(og_percent), color="black", dashes=(2, 5))
 
     # Set fixed figure width
     plt.gcf().set_size_inches(fig_width, plt.gcf().get_size_inches()[1])
@@ -1491,7 +1455,18 @@ def plot_data_distributions(ANALYSIS_DIR,
     
     n_cols = 2  # Histogram + Q-Q
     n_rows = n_groups
-
+    sns.set_context(
+        "talk",
+        rc={
+            "font.size": 8,
+            "axes.titlesize": 10,
+            "axes.labelsize": 8,
+            "xtick.labelsize": 8,
+            "ytick.labelsize": 8,
+            "legend.fontsize": 8,
+            "legend.title_fontsize": 8,
+        },
+    )
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(6, 2 * n_rows))
     if n_rows == 1:
         axes = axes.reshape(1, -1)
@@ -1536,3 +1511,161 @@ def plot_data_distributions(ANALYSIS_DIR,
     )
     plt.show()
     plt.show()
+
+def custom_boxplot(
+    folder_path: str,
+    dataset_name: str,
+    fig_name: str,
+    y_axis: str,
+    thoughput_plot: Optional[bool] = False,
+    x_axis_order: Optional[List[str]] = None,
+    color_line: Optional[str] = "#d62728",
+    subset_filenames_to_exclude: Optional[List[str]] = None,
+    output_path: Optional[str] = None,
+    color: Optional[str] = "#1f77b4",
+    fig_width: Optional[Union[int, float]] = 8,
+    aspect_ratio: Optional[float] = 2.3
+    ) -> None:
+    """
+    Generate a box plot of the instance segmentation images.
+    It will have no title and no legend.
+    x axis is the % Diameter per Pixel.
+
+    Args:
+        folder_path (str): The path to the folder containing the csv files.
+        dataset_name (str): The dataset name for the instance segmentation csv files.
+        fig_name (str): The name of the figure.
+        y_axis (str): The column to use for the y-axis.
+        subset_filenames_to_exclude (Optional[list]): The list of filenames to exclude from the plot.
+        output_path (Optional[str]): The path to the folder to save the figures.
+        color (Optional[list]): The color palette for the plot, list of hexcodes.
+        fig_width (Optional[int]): The width of the figure.
+        aspect_ratio (Optional[float]): The aspect ratio of the plot.
+        folder_sampling_dict (Optional[Dict[str, float]]): The dictionary identifying sampling multipliers according to folder.
+
+    """
+    # Input variables
+    x_axis = "Grand_Parent_Folder"
+
+    # Get the csv files
+    csv_dict = get_csv_dict(folder_path)
+
+    # Import CSVs
+    path_instance_summary = [f for f in csv_dict[dataset_name] if f.__contains__("summary_stats")][0]
+    csv_instance_summary = pd.read_csv(path_instance_summary)
+    if x_axis_order is None:
+        x_axis_order = csv_instance_summary[x_axis].unique().tolist()
+    # If thoughput plot is true
+
+    # If a subset is given, filter the dataframe
+    if subset_filenames_to_exclude is not None:
+        if any(
+            file in csv_instance_summary["File_name"].unique()
+            for file in subset_filenames_to_exclude
+        ):
+            csv_instance_summary = csv_instance_summary[
+                ~csv_instance_summary["File_name"].isin(
+                    subset_filenames_to_exclude
+                )
+            ]
+
+    sns.set_context(
+        "talk",
+        rc={
+            "font.size": 20,
+            "axes.titlesize": 22,
+            "axes.labelsize": 25,
+            "xtick.labelsize": 20,
+            "ytick.labelsize": 20,
+            "legend.fontsize": 15,
+            "legend.title_fontsize": 15,
+        },
+    )
+    fig, ax1 = plt.subplots()
+
+    # Arguments for plotting
+    plot_args_box = {
+        "data": csv_instance_summary,
+        "x": x_axis,
+        "y": y_axis,
+        "color": color,
+        "dodge": True,
+        "linecolor": "black",
+        "linewidth": 2,
+        "whis": 1.5,  # 1.5 IQR
+        "legend": False,
+    }
+
+    # Plot
+    plot = sns.boxplot(**plot_args_box)
+
+    # Set fixed figure width
+    plt.gcf().set_size_inches(fig_width, fig_width / aspect_ratio)
+
+    # Major gridlines, x label and y top limit
+    plt.grid(axis="y", which="major")
+    plt.ylim(top=1)
+    plt.xlabel("Conditions")
+
+    if thoughput_plot:
+        # Calculate mean diameter per sampling and use it to calculate % Diameter per Pixel
+        mean_obj_area = (csv_instance_summary.groupby(["Grand_Parent_Folder", "File_name"])["GT_area"]
+        .mean()
+        .round(2).to_dict())
+        # Convert string to values and calculate FOV area from Image dimensions
+        csv_instance_summary["img_dimensions"] = csv_instance_summary["Dimensions"].apply(
+            ast.literal_eval
+        )
+        csv_instance_summary["FOV_area"] = csv_instance_summary["img_dimensions"].apply(
+            lambda x: np.prod(x)
+        )
+        fov_per_group = (csv_instance_summary.groupby(["Grand_Parent_Folder", "File_name"])["FOV_area"]
+        .mean()
+        .round(2).to_dict())
+        csv_instance_summary["Throughput"] = csv_instance_summary.apply(
+            lambda row: (fov_per_group[row["Grand_Parent_Folder"], row["File_name"]]/mean_obj_area[row["Grand_Parent_Folder"], row["File_name"]] ),
+            axis=1,
+        ) 
+        plot_args_box["ax"] = ax1
+        plot_args_box["order"] = x_axis_order
+
+        # Create a secondary y-axis
+        ax2 = ax1.twinx()
+
+        plot_args_line = {
+            "data": csv_instance_summary,
+            "x": x_axis,
+            "y": "Throughput",
+            "color": color_line,
+            "linewidth": 2,
+            "errorbar": ("ci", 95),
+            "ax": ax2,
+        }
+
+        sns.lineplot(**plot_args_line)
+
+        # y-axis log scale and labels
+        plt.yscale("log")
+        plt.ylabel("Throughput [N/\u03c4]")
+
+    # Save the plot
+    if output_path is not None:
+        plt.savefig(
+            f"{output_path}/Fig_{fig_name}_{dataset_name}_{y_axis}.svg",
+            bbox_inches="tight",
+            pad_inches=0.2,
+        )
+        plt.savefig(
+            f"{output_path}/Fig_{fig_name}_{dataset_name}_{y_axis}.png",
+            bbox_inches="tight",
+            pad_inches=0.2,
+            dpi=300,
+            transparent=True,
+        )
+        plt.savefig(
+            f"{output_path}/Fig_{fig_name}_{dataset_name}_{y_axis}.pdf",
+            bbox_inches="tight",
+            pad_inches=0.2,
+            dpi=300,
+            transparent=True,
+        )

@@ -186,7 +186,140 @@ def compute_statistical_analysis(ANALYSIS_DIR,
 
     # Heatmap plot of the p-values (add to your notebook)    
     results = pd.DataFrame(results)
-    results.to_csv(os.path.join(ANALYSIS_DIR, f"{DATASET}/Results/{DATASET}_p-values_{filename}"), index=False)  # Save results to CSV for reference
+    os.makedirs(os.path.join(ANALYSIS_DIR, f"{DATASET}/Results/stats"), exist_ok=True)
+    results.to_csv(os.path.join(ANALYSIS_DIR, f"{DATASET}/Results/stats/{DATASET}_p-values_{filename}"), index=False)  # Save results to CSV for reference
+    # Create a symmetric p-value matrix for heatmap visualization
+    pval_matrix = create_pvalue_matrix(results)
+    
+    # Apply log transformation to p-values for better visualization of decimals, handling p=1 appropriately
+    log_matrix = safe_log10_p_values(pval_matrix.fillna(1))
+    # Define the normalization range 
+    vmin = -np.log10(0.1)  # Set vmin to the log-transformed value of 0.1
+    vmax = np.max(log_matrix[np.isfinite(log_matrix)])
+
+    if vmin > vmax:
+        vmin = vmax       
+        
+    formatted_annotations = pval_matrix.map(lambda x: format_p_value(x) if pd.notna(x) else "NaN")
+    sns.set_context(
+        "talk",
+        rc={
+            "font.size": 12,
+            "axes.titlesize": 12,
+            "axes.labelsize": 12,
+            "xtick.labelsize": 12,
+            "ytick.labelsize": 12,
+            "legend.fontsize": 12,
+            "legend.title_fontsize": 12,
+        },
+    )
+    plt.figure(figsize=(12, 12))
+    plt.rcParams.update({'font.size': 14})
+    sns.heatmap(log_matrix, cmap='Oranges', annot=formatted_annotations,
+                xticklabels=pval_matrix.columns,
+                yticklabels=pval_matrix.index, vmin=vmin, vmax=vmax, fmt='',
+                cbar_kws={'label': '-log(p-value)'})
+    plt.title('Pairwise p-value Matrix')
+    plt.tight_layout()
+    os.makedirs(os.path.join(ANALYSIS_DIR, f"{DATASET}/Plots"), exist_ok=True)
+    plt.savefig(
+        os.path.join(ANALYSIS_DIR, f"{DATASET}/Plots/{DATASET}_p-values_{filename}.png"),
+        bbox_inches="tight",
+        pad_inches=0.2,
+        dpi=300,
+        transparent=True,
+    )
+    plt.savefig(
+        os.path.join(ANALYSIS_DIR, f"{DATASET}/Plots/{DATASET}_p-values_{filename}.pdf"),
+        bbox_inches="tight",
+        pad_inches=0.2,
+        dpi=300,
+        transparent=True,
+    )
+    plt.show()
+    
+    return results
+
+def compute_statistical_analysis_from_pandas(df,
+                                             OUTPUT_DIR,
+                                 quantitative_column,
+                                 categorical_columns,
+                                 test_type="Kolmogorov-Smirnov",
+                                 choose_test="Manual"):
+    """
+    Perform pairwise statistical analysis on groups defined by multiple categorical variables.
+    
+    Args:
+    ANALYSIS_DIR: Base directory where the data is stored
+    DATASET: Name of the dataset to analyze
+    quantitative_column: Name of the column containing the quantitative data to analyze
+    categorical_columns: List of column names defining the hierarchy of groups
+    test_type: "t-test", "Welch's t-test", or "Kolmogorov-Smirnov"
+    choose_test: "Automatic" or "Manual"
+    filename: footer of the CSV file containing the data (default: "summary_stats.csv")
+    
+    Returns:
+    pandas DataFrame with results of statistical tests
+    """
+
+    if choose_test != "Automatic":
+        print(f"The statistical test chosen is {test_type}")
+    
+    # Get all unique combinations
+    combos_df = df[categorical_columns].drop_duplicates()
+    combinations_list = list(combos_df.itertuples(index=False, name=None))
+    
+    results = []
+    
+    # Perform pairwise comparisons within each combination level
+    for i, combo1 in enumerate(combinations_list):
+        for combo2 in combinations_list[i+1:]:  # Avoid duplicate pairs
+            
+            # Create masks for both combinations
+            mask1 = pd.Series([True] * len(df), index=df.index)
+            mask2 = pd.Series([True] * len(df), index=df.index)
+            
+            for j, col in enumerate(categorical_columns):
+                mask1 &= (df[col] == combo1[j])
+                mask2 &= (df[col] == combo2[j])
+            
+            data1 = df.loc[mask1, quantitative_column].dropna()
+            data2 = df.loc[mask2, quantitative_column].dropna()
+            
+            if len(data1) < 2 or len(data2) < 2:
+                continue
+                
+            if choose_test == "Automatic":
+                test_type = choose_statistical_test(data1, data2)
+            
+            statistic, p_value = run_statistical_test(data1, data2, test_type)
+            
+            # Format hierarchy paths for output
+            path1 = ' | '.join([f"{categorical_columns[j]}: {combo1[j]}" for j in range(len(categorical_columns))])
+            path2 = ' | '.join([f"{categorical_columns[j]}: {combo2[j]}" for j in range(len(categorical_columns))])
+            
+            if p_value < 0.005:
+                significance = '***'
+            elif p_value < 0.01:
+                significance = '**'
+            elif p_value < 0.05:    
+                significance = '*'
+            else:
+                significance = ''
+
+            results.append({
+                'Hierarchy1': path1,
+                'Hierarchy2': path2,
+                'Test': test_type,
+                'Statistic': statistic,
+                'p-value': p_value,
+                'Significance': significance
+            })
+
+    # Heatmap plot of the p-values (add to your notebook)    
+    results = pd.DataFrame(results)
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    results.to_csv(os.path.join(OUTPUT_DIR, f"p-values.csv"), index=False)  # Save results to CSV for reference
     # Create a symmetric p-value matrix for heatmap visualization
     pval_matrix = create_pvalue_matrix(results)
     
@@ -208,16 +341,16 @@ def compute_statistical_analysis(ANALYSIS_DIR,
                 cbar_kws={'label': '-log(p-value)'})
     plt.title('Pairwise p-value Matrix')
     plt.tight_layout()
-    os.makedirs(os.path.join(ANALYSIS_DIR, f"{DATASET}/Plots"), exist_ok=True)
+    
     plt.savefig(
-        os.path.join(ANALYSIS_DIR, f"{DATASET}/Plots/{DATASET}_p-values_{filename}.png"),
+        os.path.join(OUTPUT_DIR, f"p-values.png"),
         bbox_inches="tight",
         pad_inches=0.2,
         dpi=300,
         transparent=True,
     )
     plt.savefig(
-        os.path.join(ANALYSIS_DIR, f"{DATASET}/Plots/{DATASET}_p-values_{filename}.pdf"),
+        os.path.join(OUTPUT_DIR, f"p-values.pdf"),
         bbox_inches="tight",
         pad_inches=0.2,
         dpi=300,
