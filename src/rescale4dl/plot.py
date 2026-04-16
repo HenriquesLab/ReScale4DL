@@ -8,7 +8,7 @@ import seaborn as sns
 from skimage.io import imread
 import os
 from typing import List, Optional, Tuple, Dict, Literal, Union
-from rescale4dl.utils import get_csv_dict, parse_scaling_3d
+from rescale4dl.utils import get_csv_dict, parse_scaling_3d, parse_scaling_2d
 from rescale4dl.metrics.fov_estimates import microscope_FOV_area, obj_per_microscope_FOV
 import ast
 
@@ -182,7 +182,7 @@ def mean_obj_diam_dict(
 
 def generate_binary_semantic_box_plot(
     folder_path: str,
-    x: str,
+    dataset_SS: str,
     dataset_name: str,
     fig_name: str,
     y_axis: str,
@@ -194,6 +194,8 @@ def generate_binary_semantic_box_plot(
     palette: Optional[list] = ["#1f77b4", "#ff9f9b"],
     fig_width: Optional[int] = 4.2,
     aspect_ratio: Optional[float] = 1.5,
+    x_axis: Optional[str] = "scaling_factor", # pixel_diameter or scaling_factor
+    plot_type = "boxplot" # boxplot or barplot
 ) -> None:
     """
     Generate a box plot of the IoU of the binary mask and semantic segmentation images.
@@ -213,7 +215,7 @@ def generate_binary_semantic_box_plot(
     """
 
     # Input variables
-    x_axis = "% Diameter per Pixel"
+    x_axis = "% Diameter per Pixel" if x_axis == "pixel_diameter" else "scaling_factor"
 
     # Get the csv files
     csv_dict = get_csv_dict(folder_path)
@@ -225,20 +227,31 @@ def generate_binary_semantic_box_plot(
 
     # Calculate mean diameter per sampling and use it to calculate % Diameter per Pixel
     mean_diam_sampling = mean_obj_diam_dict(dataset_name, csv_dict)
+    if x_axis == "scaling_factor":
+        csv_BN["scaling_info"] = csv_BN["Grand_Parent_Folder"].apply(parse_scaling_2d)
+        csv_BN["direction"] = csv_BN.apply(lambda row: row["scaling_info"]["direction"] if row["scaling_info"] else None, axis=1)
+        csv_BN["scaling_factor"] = csv_BN.apply(lambda row: -row["scaling_info"]["factor"] if row["scaling_info"]["direction"] == "down" else row["scaling_info"]["factor"], axis=1).astype(int)
+        x_labels = np.sort(csv_BN["scaling_factor"].unique())
 
-    csv_BN["Mean_diameter_per_sampling_GT"] = csv_BN[
-        "Grand_Parent_Folder"
-    ].map(mean_diam_sampling)
-    csv_SS["Mean_diameter_per_sampling_GT"] = csv_SS[
-        "Grand_Parent_Folder"
-    ].map(mean_diam_sampling)
+        csv_SS["scaling_info"] = csv_SS["Grand_Parent_Folder"].apply(parse_scaling_2d)
+        csv_SS["direction"] = csv_SS.apply(lambda row: row["scaling_info"]["direction"] if row["scaling_info"] else None, axis=1)
+        csv_SS["scaling_factor"] = csv_SS.apply(lambda row: -row["scaling_info"]["factor"] if row["scaling_info"]["direction"] == "down" else row["scaling_info"]["factor"], axis=1).astype(int)
+        csv_SS["scaling_factor"] =  csv_SS["scaling_factor"].astype(str)
+        
+    else:
+        csv_BN["Mean_diameter_per_sampling_GT"] = csv_BN[
+            "Grand_Parent_Folder"
+        ].map(mean_diam_sampling)
+        csv_SS["Mean_diameter_per_sampling_GT"] = csv_SS[
+            "Grand_Parent_Folder"
+        ].map(mean_diam_sampling)
 
-    csv_BN["% Diameter per Pixel"] = (
-        (100 / csv_BN["Mean_diameter_per_sampling_GT"]).round(0).astype(int)
-    )
-    csv_SS["% Diameter per Pixel"] = (
-        (100 / csv_SS["Mean_diameter_per_sampling_GT"]).round(0).astype(int)
-    )
+        csv_BN["% Diameter per Pixel"] = (
+            (100 / csv_BN["Mean_diameter_per_sampling_GT"]).round(0).astype(int)
+        )
+        csv_SS["% Diameter per Pixel"] = (
+            (100 / csv_SS["Mean_diameter_per_sampling_GT"]).round(0).astype(int)
+        )
 
     # Filter the dataframe
     csv_SS = csv_SS[csv_SS["GT_Label"] == "ALL"]
@@ -253,48 +266,69 @@ def generate_binary_semantic_box_plot(
     # If adding throughput line to plot
     if thoughput_plot:
         # Add a column to identify the source of the data
-        path_instance_summary = [f for f in csv_dict[dataset_name] if f.__contains__("summary_stats")][0]
+        path_instance_summary = [f for f in csv_dict[dataset_SS] if f.__contains__("summary_stats")][0]
         csv_instance_summary = pd.read_csv(path_instance_summary)
-
-        csv_instance_summary["Source"] = "Instance Summary"
-        csv_instance_summary["Mean_diameter_per_sampling_GT"] = (
-            csv_instance_summary["Grand_Parent_Folder"].map(mean_diam_sampling)
-        )
-        csv_instance_summary["% Diameter per Pixel"] = (
-            (100 / csv_instance_summary["Mean_diameter_per_sampling_GT"])
-            .round(0)
-            .astype(int)
-            .astype(str)
-        )
+        if x_axis == "scaling_factor":
+            csv_instance_summary["scaling_info"] = csv_instance_summary["Grand_Parent_Folder"].apply(parse_scaling_2d)
+            csv_instance_summary["direction"] = csv_instance_summary.apply(lambda row: row["scaling_info"]["direction"] if row["scaling_info"] else None, axis=1)
+            csv_instance_summary["scaling_factor"] = csv_instance_summary.apply(lambda row: -row["scaling_info"]["factor"] if row["scaling_info"]["direction"] == "down" else row["scaling_info"]["factor"], axis=1).astype(int).astype(str)
+        else:
+            csv_instance_summary["Source"] = "Instance Summary"
+            csv_instance_summary["Mean_diameter_per_sampling_GT"] = (
+                csv_instance_summary["Grand_Parent_Folder"].map(mean_diam_sampling)
+            )
+            csv_instance_summary["% Diameter per Pixel"] = (
+                (100 / csv_instance_summary["Mean_diameter_per_sampling_GT"])
+                .round(0)
+                .astype(int)
+                .astype(str)
+            )
 
     sns.set_context("talk")
     fig, ax1 = plt.subplots()
 
-    # Arguments for plotting
-    plot_args_box = {
-        "data": dataframe,
-        "x": x_axis,
-        "y": y_axis,
-        "hue": "Source",
-        "palette": palette,
-        "dodge": True,
-        "linecolor": "black",
-        "linewidth": 2,
-        "whis": 1.5,  # 1.5 IQR
-        "legend": False,
-        "ax": ax1,
-    }
-
-    # Plot
-    plot = sns.boxplot(**plot_args_box)
-
+    if plot_type == "boxplot":
+        plot_args_box = {
+            "data": dataframe,
+            "x": x_axis,
+            "y": y_axis,
+            "hue": "Source",
+            "palette": palette,
+            "dodge": True,
+            "linecolor": "black",
+            "linewidth": 2,
+            "whis": 1.5,  # 1.5 IQR
+            "legend": False,
+            "ax": ax1,
+        }
+        if x_axis == "scaling_factor":
+            plot_args_box["order"] = x_labels
+        # Plot
+        plot = sns.boxplot(**plot_args_box)
+    elif plot_type == "barplot":
+        plot_args_box = {
+            "data": dataframe,
+            "x": x_axis,
+            "y": y_axis,
+            "hue": "Source",
+            "palette": palette,
+            "dodge": True,
+            "linewidth": 2,
+            "errorbar": ("ci", 95),
+            "legend": False,
+            "ax": ax1,
+        }
+        if x_axis == "scaling_factor":
+            plot_args_box["order"] = x_labels
+        # Plot
+        plot = sns.barplot(**plot_args_box)
     # Set fixed figure width
     plt.gcf().set_size_inches(fig_width, fig_width / aspect_ratio)
-
     # Add major grid lines, x label and y top limit
     plt.grid(axis="y", which="major")
     plt.ylim(top=1)
-    plt.xlabel("Pixel Diameter [%]")
+    xlabel = "Pixel Diameter [%]" if x_axis == "% Diameter per Pixel" else "Scaling Factor"
+    
 
     if thoughput_plot:
         # Create a secondary y-axis
@@ -302,7 +336,7 @@ def generate_binary_semantic_box_plot(
 
         # Calculate microscopeFOV from original resolution dataset
         mic_FOV_area = microscope_FOV_area(path_instance_summary, original_folder_name=original_folder_name)
-
+        
         # Calculate the objects per FOV for each sampling
         objs_per_FOV_df = obj_per_microscope_FOV(
             mic_FOV_area, folder_path, dataset_name
@@ -315,7 +349,6 @@ def generate_binary_semantic_box_plot(
             on=["Grand_Parent_Folder", "File_name"],
             how="left",
         )
-
         plot_args_line = {
             "data": csv_instance_summary,
             "x": x_axis,
@@ -331,7 +364,7 @@ def generate_binary_semantic_box_plot(
         # y-axis log scale and labels
         plt.yscale("log")
         plt.ylabel("Throughput [N/\u03c4]")
-
+    plt.xlabel(xlabel)
     # Save the plot
     if output_path is not None:
         plt.savefig(
@@ -368,7 +401,7 @@ def generate_binary_semantic_box_plot_3D(
     palette: Optional[list] = ["#1f77b4", "#ff9f9b"],
     plot_type: Literal["boxplot", "barplot"] = "barplot",
     fig_width: Optional[int] = 13,
-    aspect_ratio: Optional[float] = 5,
+    aspect_ratio: Optional[float] = 5
 ) -> None:
     """
     Generate a box plot of the IoU of the binary mask and semantic segmentation images.
@@ -461,6 +494,8 @@ def generate_binary_semantic_box_plot_3D(
                 "legend": False,
                 "ax": ax,
             }
+            # Plot
+            plot = sns.boxplot(**plot_args_box)
         elif plot_type == "barplot":
             plot_args_box = {
                 "data": df_type,
@@ -474,8 +509,8 @@ def generate_binary_semantic_box_plot_3D(
                 "legend": False,
                 "ax": ax,
             }
-        # Plot
-        plot = sns.barplot(**plot_args_box)
+            # Plot
+            plot = sns.barplot(**plot_args_box)
         # Grids and limits
         ax.grid(axis="y", which="major")
         ax.set_ylim(top=1)
@@ -550,16 +585,17 @@ def generate_semantic_gt_pred_bar_plot(
     fig_width: Optional[int] = 5.5,
     aspect_ratio: Optional[Union[int, float]] = 1.5,
     folder_sampling_dict: Optional[Dict[str, float]] = {
-        "upsampling_16": 16,
-        "upsampling_8": 8,
-        "upsampling_4": 4,
-        "upsampling_2": 2,
-        "OG": 1,
-        "downsampling_2": 1 / 2,
-        "downsampling_4": 1 / 4,
-        "downsampling_8": 1 / 8,
-        "downsampling_16": 1 / 16,
-    },
+                                                        "upsampling_16": 16,
+                                                        "upsampling_8": 8,
+                                                        "upsampling_4": 4,
+                                                        "upsampling_2": 2,
+                                                        "OG": 1,
+                                                        "downsampling_2": 1 / 2,
+                                                        "downsampling_4": 1 / 4,
+                                                        "downsampling_8": 1 / 8,
+                                                        "downsampling_16": 1 / 16,
+                                                    },
+    x_axis: Optional[str] = "scaling_factor" # pixel_diameter
 ) -> None:
     """
     Generate a bar plot comparing the estimated median diameter of the ground truth and the prediction for a dataset.
@@ -577,7 +613,6 @@ def generate_semantic_gt_pred_bar_plot(
     """
 
     # Input variables
-    x_axis = "% Diameter per Pixel"
     y_axis = "Diameter"
 
     # Get the csv files
@@ -586,6 +621,15 @@ def generate_semantic_gt_pred_bar_plot(
     # Import CSVs
     csv_instance_summary = pd.read_csv([f for f in csv_dict[dataset_name] if f.__contains__("summary_stats")][0])  # pd.read_csv(csv_dict[dataset_name][-1])
 
+
+    if x_axis == "scaling_factor":
+        csv_instance_summary["scaling_info"] = csv_instance_summary["Grand_Parent_Folder"].apply(parse_scaling_2d)
+        csv_instance_summary["direction"] = csv_instance_summary.apply(lambda row: row["scaling_info"]["direction"] if row["scaling_info"] else None, axis=1)
+        csv_instance_summary["scaling_factor"] = csv_instance_summary.apply(lambda row: -row["scaling_info"]["factor"] if row["scaling_info"]["direction"] == "down" else row["scaling_info"]["factor"], axis=1).astype(int)
+        x_labels = np.sort(csv_instance_summary["scaling_factor"].unique())
+        
+    else:
+        x_axis = "% Diameter per Pixel"
     # Calculate mean diameter per sampling and use it to calculate % Diameter per Pixel
     mean_diam_sampling = mean_obj_diam_dict(dataset_name, csv_dict)
 
@@ -611,14 +655,24 @@ def generate_semantic_gt_pred_bar_plot(
     )
 
     # Create a dataframe for the plot
-    gt_df = csv_instance_summary[
-        ["GT_diameter_median_norm", "% Diameter per Pixel"]
-    ].rename(columns={"GT_diameter_median_norm": y_axis})
-    gt_df["Source\nSegmentation"] = "Ground Truth"
-    pred_df = csv_instance_summary[
-        ["Prediction_diameter_median_norm", "% Diameter per Pixel"]
-    ].rename(columns={"Prediction_diameter_median_norm": y_axis})
-    pred_df["Source\nSegmentation"] = "Prediction"
+    if x_axis == "scaling_factor":
+        gt_df = csv_instance_summary[
+            ["GT_diameter_median_norm", "% Diameter per Pixel", "scaling_factor"]
+        ].rename(columns={"GT_diameter_median_norm": y_axis})
+        gt_df["Source\nSegmentation"] = "Ground Truth"
+        pred_df = csv_instance_summary[
+            ["Prediction_diameter_median_norm", "% Diameter per Pixel", "scaling_factor"]
+        ].rename(columns={"Prediction_diameter_median_norm": y_axis})
+        pred_df["Source\nSegmentation"] = "Prediction"
+    else:
+        gt_df = csv_instance_summary[
+            ["GT_diameter_median_norm", "% Diameter per Pixel"]
+        ].rename(columns={"GT_diameter_median_norm": y_axis})
+        gt_df["Source\nSegmentation"] = "Ground Truth"
+        pred_df = csv_instance_summary[
+            ["Prediction_diameter_median_norm", "% Diameter per Pixel"]
+        ].rename(columns={"Prediction_diameter_median_norm": y_axis})
+        pred_df["Source\nSegmentation"] = "Prediction"
 
     dataframe = pd.concat([gt_df, pred_df], axis=0, ignore_index=True)
 
@@ -655,7 +709,10 @@ def generate_semantic_gt_pred_bar_plot(
     plt.ylim(top=rounded_max_y)
 
     plt.grid(axis="y", which="major")
-    plt.xlabel("Pixel Diameter [%]")
+    if x_axis == "scaling_factor":
+        plt.xlabel("Scaling factor")
+    else:
+        plt.xlabel("Pixel Diameter [%]")
 
     # Save the plot
     if output_path is not None:
@@ -695,6 +752,7 @@ def generate_instance_box_plot(
     fig_width: Optional[Union[int, float]] = 8,
     aspect_ratio: Optional[float] = 2.3,
     is_round_obj: Optional[bool] = True,
+    x_axis: Optional[str] = "scaling_factor", # pixel_diameter or scaling_factor
 ) -> None:
     """
     Generate a box plot of the instance segmentation images.
@@ -714,8 +772,6 @@ def generate_instance_box_plot(
         folder_sampling_dict (Optional[Dict[str, float]]): The dictionary identifying sampling multipliers according to folder.
 
     """
-    # Input variables
-    x_axis = "% Diameter per Pixel"
 
     # Get the csv files
     csv_dict = get_csv_dict(folder_path)
@@ -723,33 +779,39 @@ def generate_instance_box_plot(
     # Import CSVs
     path_instance_summary = [f for f in csv_dict[dataset_name] if f.__contains__("summary_stats")][0]
     csv_instance_summary = pd.read_csv(path_instance_summary)
-
     # Calculate mean diameter per sampling and use it to calculate % Diameter per Pixel
-    mean_diam_sampling = mean_obj_diam_dict(
-        dataset_name, csv_dict, is_round_obj
-    )
+    mean_diam_sampling = mean_obj_diam_dict(dataset_name, csv_dict, is_round_obj)
 
-    # Assign the mean diameter per sampling to the dataframe based on sampling
-    csv_instance_summary["Mean_diameter_per_sampling_GT"] = (
-        csv_instance_summary["Grand_Parent_Folder"].map(mean_diam_sampling)
-    )
+    if x_axis == "scaling_factor":
+        csv_instance_summary["scaling_info"] = csv_instance_summary["Grand_Parent_Folder"].apply(parse_scaling_2d)
+        csv_instance_summary["direction"] = csv_instance_summary.apply(lambda row: row["scaling_info"]["direction"] if row["scaling_info"] else None, axis=1)
+        csv_instance_summary["scaling_factor"] = csv_instance_summary.apply(lambda row: -row["scaling_info"]["factor"] if row["scaling_info"]["direction"] == "down" else row["scaling_info"]["factor"], axis=1).astype(int)
+        x_labels = np.sort(csv_instance_summary["scaling_factor"].unique())
+        csv_instance_summary["scaling_factor"] = csv_instance_summary["scaling_factor"].astype(str)
 
-    # Calculate % diameter per pixel
-    csv_instance_summary["% Diameter per Pixel"] = (
-        (100 / csv_instance_summary["Mean_diameter_per_sampling_GT"])
-        .round(1)
-        .astype(float)
-    )
+    else:
+        # Assign the mean diameter per sampling to the dataframe based on sampling
+        csv_instance_summary["Mean_diameter_per_sampling_GT"] = (
+            csv_instance_summary["Grand_Parent_Folder"].map(mean_diam_sampling)
+        )
 
-    # If thoughput plot is true
-    if thoughput_plot:
-        order = sorted(csv_instance_summary["% Diameter per Pixel"].unique())
+        # Calculate % diameter per pixel
         csv_instance_summary["% Diameter per Pixel"] = (
             (100 / csv_instance_summary["Mean_diameter_per_sampling_GT"])
             .round(1)
             .astype(float)
-            .astype(str)
         )
+        x_axis = "% Diameter per Pixel"
+
+        # If thoughput plot is true
+        if thoughput_plot:
+            order = sorted(csv_instance_summary["% Diameter per Pixel"].unique())
+            csv_instance_summary["% Diameter per Pixel"] = (
+                (100 / csv_instance_summary["Mean_diameter_per_sampling_GT"])
+                .round(1)
+                .astype(float)
+                .astype(str)
+            )
 
     # If a subset is given, filter the dataframe
     if subset_filenames_to_exclude is not None:
@@ -789,10 +851,16 @@ def generate_instance_box_plot(
         "whis": 1.5,  # 1.5 IQR
         "legend": False,
     }
+    if x_axis=="scaling_facor":
+        plot_args_box["order"] = x_labels
+
 
     if thoughput_plot:
         plot_args_box["ax"] = ax1
-        plot_args_box["order"] = order
+        if x_axis == "% Diameter per Pixel":
+            plot_args_box["order"] = order
+        else:
+            plot_args_box["order"] = x_labels
 
     # Plot
     plot = sns.boxplot(**plot_args_box)
@@ -803,7 +871,10 @@ def generate_instance_box_plot(
     # Major gridlines, x label and y top limit
     plt.grid(axis="y", which="major")
     plt.ylim(top=1)
-    plt.xlabel("Pixel Diameter [%]")
+    if x_axis == "scaling_factor":
+        plt.xlabel("Scaling factor")
+    else:
+        plt.xlabel("Pixel Diameter [%]")
 
     if thoughput_plot:
         # Create a secondary y-axis
@@ -816,7 +887,6 @@ def generate_instance_box_plot(
         objs_per_FOV_df = obj_per_microscope_FOV(
             mic_FOV_area, folder_path, dataset_name
         )
-
         # Merge the dataframes
         csv_instance_summary = pd.merge(
             csv_instance_summary,
@@ -824,7 +894,7 @@ def generate_instance_box_plot(
             on=["Grand_Parent_Folder", "File_name"],
             how="left",
         )
-
+        
         plot_args_line = {
             "data": csv_instance_summary,
             "x": x_axis,
@@ -834,7 +904,6 @@ def generate_instance_box_plot(
             "errorbar": ("ci", 95),
             "ax": ax2,
         }
-
         sns.lineplot(**plot_args_line)
 
         # y-axis log scale and labels
@@ -885,6 +954,7 @@ def generate_instance_gt_pred_bar_plot(
         "downsampling_8": 1 / 8,
         "downsampling_16": 1 / 16,
     },
+    x_axis: Optional[str] = "scaling_factor" # pixel_diameter
 ) -> None:
     """
     Generate a bar plot comparing the estimated median diameter of the ground truth and the prediction for a dataset.
@@ -905,7 +975,6 @@ def generate_instance_gt_pred_bar_plot(
 
     """
     # Input variables
-    x_axis = "% Diameter per Pixel"
     y_axis = "Diameter"
 
     # Get the csv files
@@ -919,6 +988,15 @@ def generate_instance_gt_pred_bar_plot(
     # Import CSVs
     csv_instance_summary = pd.read_csv([f for f in csv_dict[dataset_name] if f.__contains__("summary_stats")][0]) # pd.read_csv(csv_dict[dataset_name][-1])
     csv_instance_per_obj = pd.read_csv([f for f in csv_dict[dataset_name] if f.__contains__("per_obj_stats")][0]) #pd.read_csv(csv_dict[dataset_name][0])
+    
+    if x_axis == "scaling_factor":
+        csv_instance_summary["scaling_info"] = csv_instance_summary["Grand_Parent_Folder"].apply(parse_scaling_2d)
+        csv_instance_summary["direction"] = csv_instance_summary.apply(lambda row: row["scaling_info"]["direction"] if row["scaling_info"] else None, axis=1)
+        csv_instance_summary["scaling_factor"] = csv_instance_summary.apply(lambda row: -row["scaling_info"]["factor"] if row["scaling_info"]["direction"] == "down" else row["scaling_info"]["factor"], axis=1).astype(int)
+        x_labels = np.sort(csv_instance_summary["scaling_factor"].unique())
+        
+    else:
+        x_axis = "% Diameter per Pixel"
 
     # Calculate object diameter from area, assuming objects are circular
     csv_instance_per_obj["GT_diameter_from_area"] = 2 * np.sqrt(
@@ -974,16 +1052,25 @@ def generate_instance_gt_pred_bar_plot(
         csv_instance_summary["Median_pred_diameter_from_area"]
         / csv_instance_summary["Grand_Parent_Folder"].map(folder_sampling_dict)
     )
-
-    # Create a dataframe for the plot
-    gt_df = csv_instance_summary[
-        ["GT_diameter_median_norm", "% Diameter per Pixel"]
-    ].rename(columns={"GT_diameter_median_norm": y_axis})
-    gt_df["Source\nSegmentation"] = "Ground Truth"
-    pred_df = csv_instance_summary[
-        ["Prediction_diameter_median_norm", "% Diameter per Pixel"]
-    ].rename(columns={"Prediction_diameter_median_norm": y_axis})
-    pred_df["Source\nSegmentation"] = "Prediction"
+    if x_axis == "scaling_factor":
+        gt_df = csv_instance_summary[
+            ["GT_diameter_median_norm", "% Diameter per Pixel", "scaling_factor"]
+        ].rename(columns={"GT_diameter_median_norm": y_axis})
+        gt_df["Source\nSegmentation"] = "Ground Truth"
+        pred_df = csv_instance_summary[
+            ["Prediction_diameter_median_norm", "% Diameter per Pixel", "scaling_factor"]
+        ].rename(columns={"Prediction_diameter_median_norm": y_axis})
+        pred_df["Source\nSegmentation"] = "Prediction"
+    else:
+        # Create a dataframe for the plot
+        gt_df = csv_instance_summary[
+            ["GT_diameter_median_norm", "% Diameter per Pixel"]
+        ].rename(columns={"GT_diameter_median_norm": y_axis})
+        gt_df["Source\nSegmentation"] = "Ground Truth"
+        pred_df = csv_instance_summary[
+            ["Prediction_diameter_median_norm", "% Diameter per Pixel"]
+        ].rename(columns={"Prediction_diameter_median_norm": y_axis})
+        pred_df["Source\nSegmentation"] = "Prediction"
 
     # Concatenate the dataframes
     dataframe = pd.concat([gt_df, pred_df], axis=0, ignore_index=True)
@@ -1039,7 +1126,11 @@ def generate_instance_gt_pred_bar_plot(
     plt.ylim(bottom=rounded_min_y)
 
     plt.grid(axis="y", which="major")
-    plt.xlabel("Pixel Diameter [%]")
+    
+    if x_axis == "scaling_factor":
+        plt.xlabel("Scaling factor")
+    else:
+        plt.xlabel("Pixel Diameter [%]")
 
     # Save the plot
     if output_path is not None:
