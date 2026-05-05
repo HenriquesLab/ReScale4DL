@@ -785,9 +785,11 @@ def generate_instance_box_plot(
     if x_axis == "scaling_factor":
         csv_instance_summary["scaling_info"] = csv_instance_summary["Grand_Parent_Folder"].apply(parse_scaling_2d)
         csv_instance_summary["direction"] = csv_instance_summary.apply(lambda row: row["scaling_info"]["direction"] if row["scaling_info"] else None, axis=1)
-        csv_instance_summary["scaling_factor"] = csv_instance_summary.apply(lambda row: -row["scaling_info"]["factor"] if row["scaling_info"]["direction"] == "down" else row["scaling_info"]["factor"], axis=1).astype(int)
+        csv_instance_summary["scaling_factor"] = csv_instance_summary.apply(lambda row: int(-row["scaling_info"]["factor"]) if row["scaling_info"]["direction"] == "down" else int(row["scaling_info"]["factor"]), axis=1)
         x_labels = np.sort(csv_instance_summary["scaling_factor"].unique())
+        x_labels = [str(i) for i in x_labels]
         csv_instance_summary["scaling_factor"] = csv_instance_summary["scaling_factor"].astype(str)
+        
 
     else:
         # Assign the mean diameter per sampling to the dataframe based on sampling
@@ -851,9 +853,8 @@ def generate_instance_box_plot(
         "whis": 1.5,  # 1.5 IQR
         "legend": False,
     }
-    if x_axis=="scaling_facor":
+    if x_axis == "scaling_facor":
         plot_args_box["order"] = x_labels
-
 
     if thoughput_plot:
         plot_args_box["ax"] = ax1
@@ -1181,6 +1182,7 @@ def generate_instance_wt_treatment_bar_plot(
         "downsampling_8": 1 / 8,
         "downsampling_16": 1 / 16,
     },
+    x_axis: Optional[str] = "scaling_factor" # pixel_diameter
 ) -> None:
     """
     Generate a bar plot comparing the estimated median diameter of the ground truth and the prediction for the wt and treatment subsets of a dataset.
@@ -1201,7 +1203,6 @@ def generate_instance_wt_treatment_bar_plot(
 
     """
     # Input variables
-    x_axis = "% Diameter per Pixel"
     y_axis = "Diameter"
 
     # Get the csv files
@@ -1266,16 +1267,30 @@ def generate_instance_wt_treatment_bar_plot(
         csv_instance_summary["Median_pred_diameter_from_area"]
         / csv_instance_summary["Grand_Parent_Folder"].map(folder_sampling_dict)
     )
-
-    # Create a dataframe for the plot
-    gt_df = csv_instance_summary[
-        ["GT_diameter_median_norm", "% Diameter per Pixel", "Subset"]
-    ].rename(columns={"GT_diameter_median_norm": y_axis})
-    gt_df["Source\nSegmentation"] = "Ground Truth " + gt_df["Subset"]
-    pred_df = csv_instance_summary[
-        ["Prediction_diameter_median_norm", "% Diameter per Pixel", "Subset"]
-    ].rename(columns={"Prediction_diameter_median_norm": y_axis})
-    pred_df["Source\nSegmentation"] = "Prediction " + pred_df["Subset"]
+    if x_axis == "scaling_factor":
+        csv_instance_summary["scaling_info"] = csv_instance_summary["Grand_Parent_Folder"].apply(parse_scaling_2d)
+        csv_instance_summary["direction"] = csv_instance_summary.apply(lambda row: row["scaling_info"]["direction"] if row["scaling_info"] else None, axis=1)
+        csv_instance_summary["scaling_factor"] = csv_instance_summary.apply(lambda row: -row["scaling_info"]["factor"] if row["scaling_info"]["direction"] == "down" else row["scaling_info"]["factor"], axis=1).astype(int)
+         # Create a dataframe for the plot
+        gt_df = csv_instance_summary[
+            ["GT_diameter_median_norm", "scaling_factor", "Subset"]
+        ].rename(columns={"GT_diameter_median_norm": y_axis})
+        gt_df["Source\nSegmentation"] = "Ground Truth " + gt_df["Subset"]
+        pred_df = csv_instance_summary[
+            ["Prediction_diameter_median_norm", "scaling_factor", "Subset"]
+        ].rename(columns={"Prediction_diameter_median_norm": y_axis})
+        pred_df["Source\nSegmentation"] = "Prediction " + pred_df["Subset"]
+    else:
+        x_axis = "% Diameter per Pixel"
+        # Create a dataframe for the plot
+        gt_df = csv_instance_summary[
+            ["GT_diameter_median_norm", "% Diameter per Pixel", "Subset"]
+        ].rename(columns={"GT_diameter_median_norm": y_axis})
+        gt_df["Source\nSegmentation"] = "Ground Truth " + gt_df["Subset"]
+        pred_df = csv_instance_summary[
+            ["Prediction_diameter_median_norm", "% Diameter per Pixel", "Subset"]
+        ].rename(columns={"Prediction_diameter_median_norm": y_axis})
+        pred_df["Source\nSegmentation"] = "Prediction " + pred_df["Subset"]
 
     # Concatenate the dataframes
     dataframe = pd.concat([gt_df, pred_df], axis=0, ignore_index=True)
@@ -1337,7 +1352,10 @@ def generate_instance_wt_treatment_bar_plot(
     plt.ylim(bottom=rounded_min_y)
 
     plt.grid(axis="y", which="major")
-    plt.xlabel("Pixel Diameter [%]")
+    if x_axis == "scaling_factor":
+        plt.xlabel("Scaling factor")
+    else:
+        plt.xlabel("Pixel Diameter [%]")
 
     # Save the plot
     if output_path is not None:

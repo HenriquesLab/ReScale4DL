@@ -178,6 +178,8 @@ def compute_statistical_analysis(ANALYSIS_DIR,
             results.append({
                 'Hierarchy1': path1,
                 'Hierarchy2': path2,
+                'N Hierarchy1': len(data1),
+                'N Hierarchy2': len(data2),
                 'Test': test_type,
                 'Statistic': statistic,
                 'p-value': p_value,
@@ -196,6 +198,7 @@ def compute_statistical_analysis(ANALYSIS_DIR,
     # Define the normalization range 
     vmin = -np.log10(0.1)  # Set vmin to the log-transformed value of 0.1
     vmax = np.max(log_matrix[np.isfinite(log_matrix)])
+    vmax = np.max([vmax, 4])
 
     if vmin > vmax:
         vmin = vmax       
@@ -310,6 +313,8 @@ def compute_statistical_analysis_from_pandas(df,
             results.append({
                 'Hierarchy1': path1,
                 'Hierarchy2': path2,
+                'N Hierarchy1': len(data1),
+                'N Hierarchy2': len(data2),
                 'Test': test_type,
                 'Statistic': statistic,
                 'p-value': p_value,

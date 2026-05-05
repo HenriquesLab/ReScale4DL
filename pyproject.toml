@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rescale4dl"
-version = "0.2.1"
+version = "0.2.2"
 description = "A systematic approach for determining optimal image resolution in deep learning-based microscopy segmentation, balancing accuracy with acquisition/storage costs."
 authors = [
     { name = "Mariana G Ferreira", email = " marianagferreira08@gmail.com" },
