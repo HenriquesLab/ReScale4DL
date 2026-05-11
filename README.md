@@ -62,6 +62,25 @@ The deep learning networks presented in the ReScale4DL paper were trained using 
 
 For detailed hyperparameter settings and training configurations, please refer to **Table 1** in our [bioRxiv preprint](https://doi.org/10.1101/2025.04.09.647871).
 
+## Scripts
+ReScale4DL provides a set of functionalities to quickly analyse your images and find an optimal pixel size: 
+1. Rescaling the images in the path by donwsampling with a factor of 2 and 3, and by upsampling with a factor of 2:
+```
+rescale4dl.batch.process_all_datasets(“/path/data”, [2,3], [2], [1], modes=[“mean”])
+```
+2. Analyse the segmentation results for different scaling factors in 2D:
+```
+rescale4dl.analyse(“/path/data”) 
+```
+3. Analyse the segmentation results for different scaling factors in 3D:
+```
+rescale4dl.analyse(“/path/data”,
+        is_3d=True,
+        run_per_object_stats = False, # True for Instance Segmentation, False for Semantic or Binary Segmentation
+        save_images = False, # True to save images of the segmentation examples and data distributions, False to skip saving images and saving some memory
+        sampling_dir_list = None)
+```
+
 ## Contributing
 We welcome contributions through:
 - [Issue reporting](https://github.com/HenriquesLab/ReScale4D/issues)
