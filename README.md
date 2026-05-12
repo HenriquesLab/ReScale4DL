@@ -5,8 +5,7 @@
 [![PyPI](https://img.shields.io/pypi/v/rescale4dl.svg)](https://pypi.org/project/rescale4dl/)
 [![Python 3.10-3.12](https://img.shields.io/badge/python-3.10--3.12-blue.svg)](https://www.python.org/downloads/)
 [![Oncall Tests](https://github.com/HenriquesLab/ReScale4DL/actions/workflows/oncall_test.yml/badge.svg)](https://github.com/HenriquesLab/ReScale4DL/actions/workflows/oncall_test.yml)
-[![Nightly Coverage](https://github.com/HenriquesLab/ReScale4DL/actions/workflows/nightly_coverage.yml/badge.svg)](https://github.com/HenriquesLab/ReScale4DL/actions/workflows/nightly_coverage.yml)
-[![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/HenriquesLab/ReScale4DL/main/.github/badges/coverage.json)](https://github.com/HenriquesLab/ReScale4DL/actions/workflows/nightly_coverage.yml)
+[![Nightly](https://github.com/HenriquesLab/ReScale4DL/actions/workflows/nightly_coverage.yml/badge.svg)](https://github.com/HenriquesLab/ReScale4DL/actions/workflows/nightly_coverage.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A systematic approach for determining optimal image resolution in deep learning-based microscopy segmentation, balancing accuracy with acquisition/storage costs. Following this approach, researchers can improve the sustainability and cost-effectiveness of bioimaging studies by reducing data and computing
