@@ -5,84 +5,30 @@ on:
     - cron: "0 3 * * *"
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
   coverage:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check Lisbon local time
-        id: lisbon-time
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "$(TZ=Europe/Lisbon date +%H)" = "03" ]; then
-            echo "should_run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "should_run=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - uses: actions/checkout@v4
-        if: steps.lisbon-time.outputs.should_run == 'true'
-        with:
-          fetch-depth: 0
 
       - name: Install uv
-        if: steps.lisbon-time.outputs.should_run == 'true'
         uses: astral-sh/setup-uv@v5
 
       - uses: actions/setup-python@v5
-        if: steps.lisbon-time.outputs.should_run == 'true'
         with:
           python-version: "3.11"
 
       - name: Run pytest coverage
-        if: steps.lisbon-time.outputs.should_run == 'true'
         run: |
-          uv run --extra all python -m pytest tests --cov=src/rescale4dl --cov-report=term-missing --cov-report=json:coverage.json --cov-fail-under=80
+          uv run --extra all python -m pytest tests \
+            --cov=src/rescale4dl \
+            --cov-report=xml \
+            --cov-fail-under=80
 
-      - name: Update coverage badge data
-        if: steps.lisbon-time.outputs.should_run == 'true'
-        run: |
-          python - <<'PY'
-          import json
-          from pathlib import Path
-
-          coverage = json.loads(Path("coverage.json").read_text())
-          percent = coverage["totals"]["percent_covered_display"]
-          numeric = float(percent)
-          if numeric >= 90:
-              color = "brightgreen"
-          elif numeric >= 80:
-              color = "green"
-          elif numeric >= 70:
-              color = "yellowgreen"
-          elif numeric >= 60:
-              color = "yellow"
-          else:
-              color = "red"
-
-          badge = {
-              "schemaVersion": 1,
-              "label": "coverage",
-              "message": f"{percent}%",
-              "color": color,
-          }
-          badge_path = Path(".github/badges/coverage.json")
-          badge_path.parent.mkdir(parents=True, exist_ok=True)
-          badge_path.write_text(json.dumps(badge, indent=2) + "\n")
-          PY
-
-      - name: Upload coverage report
-        if: steps.lisbon-time.outputs.should_run == 'true'
-        uses: actions/upload-artifact@v4
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
         with:
-          name: coverage-json
-          path: coverage.json
-
-      - name: Commit coverage badge update
-        if: steps.lisbon-time.outputs.should_run == 'true'
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "Update nightly coverage badge"
-          file_pattern: .github/badges/coverage.json
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          fail_ci_if_error: true
