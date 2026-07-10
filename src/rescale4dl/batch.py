@@ -206,4 +206,4 @@ def rescale_and_crop(INPUT_DIR, OUTPUT_DIR, SCALE_FACTOR, TARGET_SHAPE, SAVE_SCA
         else:
             SCALE_MODE = "up"
         print(s)
-        rescale_and_crop_image(INPUT_DIR, OUTPUT_DIR, np.int8(s), SCALE_MODE, TARGET_SHAPE, SAVE_SCALED)
+        rescale_and_crop_image(INPUT_DIR, OUTPUT_DIR, int(s), SCALE_MODE, TARGET_SHAPE, SAVE_SCALED)
