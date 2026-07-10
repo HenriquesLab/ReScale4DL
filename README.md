@@ -52,9 +52,13 @@ python -m pip install .
 Notebook: [`Rescale_Images.ipynb`](https://github.com/HenriquesLab/ReScale4DL/blob/main/Notebooks/Rescale_Images.ipynb)
 
 ### 2. Segmentation Analysis 
-Notebook: [`Evaluate_Segmentation.ipynb`](https://github.com/HenriquesLab/ReScale4DL/blob/main/Notebooks/Evaluate_Segmentation.ipynb)
+Notebook for 2D images: [`Evaluate_Segmentation_2D.ipynb`](https://github.com/HenriquesLab/ReScale4DL/blob/main/Notebooks/Evaluate_Segmentation_2D.ipynb)
 
-### 3. Rescale and crop 
+Notebook for 3D images: [`Evaluate_Segmentation_3D.ipynb`](https://github.com/HenriquesLab/ReScale4DL/blob/main/Notebooks/Evaluate_Segmentation_3D.ipynb)
+
+Notebook to reproduce ReScale4DL results on real acquisitions: [`Evaluate_Segmentation_real_acquisirions.ipynb`](https://github.com/HenriquesLab/ReScale4DL/blob/main/Notebooks/Evaluate_Segmentation_real_acquisirions.ipynb)
+
+### 3. Rescale and crop to test foundation models
 Notebook: [`Rescale_Foundation_Models.ipynb`](https://github.com/HenriquesLab/ReScale4DL/blob/main/Notebooks/Rescale_Foundation_Models.ipynb)
 
 #### Additional DL resources for microscopy:
