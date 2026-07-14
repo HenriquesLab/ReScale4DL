@@ -61,6 +61,11 @@ Notebook to reproduce ReScale4DL results on real acquisitions: [`Evaluate_Segmen
 ### 3. Rescale and crop to test foundation models
 Notebook: [`Rescale_Foundation_Models.ipynb`](https://github.com/HenriquesLab/ReScale4DL/blob/main/Notebooks/Rescale_Foundation_Models.ipynb)
 
+## How to use demo
+https://github.com/user-attachments/assets/ff67aee1-9e7b-45c1-93f5-7e4c66c6c860
+
+
+
 #### Additional DL resources for microscopy:
 The deep learning networks presented in the ReScale4DL paper were trained using the following platforms:
 
