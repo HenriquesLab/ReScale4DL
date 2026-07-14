@@ -66,6 +66,10 @@ https://github.com/user-attachments/assets/ff67aee1-9e7b-45c1-93f5-7e4c66c6c860
 
 
 
+https://github.com/user-attachments/assets/74defb21-9470-4cf3-b993-d6710cfb22c4
+
+
+
 #### Additional DL resources for microscopy:
 The deep learning networks presented in the ReScale4DL paper were trained using the following platforms:
 
